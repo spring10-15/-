@@ -1,0 +1,203 @@
+/* Menu scene */
+
+.menu-shell {
+  position: relative;
+  min-height: 100vh;
+  display: block;
+}
+
+.menu-title-card {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: url("../../assets/scene-plates/menu-title-bg.png?v=20260402c") center center / cover no-repeat;
+  box-shadow: none;
+  animation: none;
+}
+
+.menu-title-card::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 13.2%;
+  width: min(720px, 52vw);
+  height: 16%;
+  transform: translateX(-50%);
+  z-index: 0;
+  background:
+    radial-gradient(circle at 78% 26%, rgba(241, 203, 129, 0.06), transparent 20%),
+    linear-gradient(90deg, rgba(12, 10, 14, 0.56), rgba(18, 16, 18, 0.4) 45%, rgba(42, 32, 21, 0.08));
+  filter: blur(18px);
+  border-radius: 20px;
+}
+
+.menu-title-marquee {
+  position: absolute;
+  left: 50%;
+  top: 25.4%;
+  transform: translateX(-50%);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: min(760px, 62vw);
+  padding: 2px 1px;
+  text-align: center;
+}
+
+.menu-title-copy {
+  font-family: var(--display-font);
+  font-size: clamp(1.7rem, 3vw, 2.95rem);
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: rgba(241, 226, 198, 0.94);
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.62),
+    0 10px 28px rgba(0, 0, 0, 0.34);
+}
+
+.menu-title-caret {
+  width: 2px;
+  height: clamp(1.85rem, 3.1vw, 3rem);
+  border-radius: 999px;
+  background: rgba(255, 228, 181, 0.18);
+  box-shadow: 0 0 8px rgba(255, 223, 175, 0.18);
+  opacity: 0;
+  transition: opacity 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.menu-title-caret.visible {
+  opacity: 1;
+  background: rgba(255, 228, 181, 0.82);
+  box-shadow:
+    0 0 10px rgba(255, 223, 175, 0.46),
+    0 0 18px rgba(255, 223, 175, 0.22);
+}
+
+.menu-title-actions {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.menu-hotspot {
+  position: absolute;
+  left: 43.7%;
+  width: 14.1%;
+  height: 6.2%;
+  border: 1px solid rgba(255, 226, 180, 0.2);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(180deg, rgba(255, 245, 224, 0.08), rgba(255, 245, 224, 0.018)),
+    rgba(10, 8, 10, 0.22);
+  color: rgba(245, 229, 198, 0.96);
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background-color 140ms ease;
+}
+
+.menu-hotspot:hover {
+  transform: translateY(-1px) scale(1.012);
+  border-color: rgba(255, 223, 175, 0.5);
+  background:
+    linear-gradient(90deg, rgba(255, 244, 222, 0.04), rgba(255, 244, 222, 0.13), rgba(255, 244, 222, 0.04)),
+    rgba(255, 236, 204, 0.08);
+  box-shadow:
+    0 0 0 1px rgba(255, 239, 210, 0.18),
+    0 0 24px rgba(255, 210, 138, 0.16),
+    0 10px 24px rgba(0, 0, 0, 0.24);
+}
+
+.menu-hotspot:focus-visible {
+  outline: 0;
+  border-color: rgba(255, 235, 196, 0.68);
+  background: rgba(255, 241, 215, 0.08);
+  box-shadow:
+    0 0 0 3px rgba(255, 208, 134, 0.32),
+    0 10px 26px rgba(0, 0, 0, 0.3);
+}
+
+.menu-hotspot:active {
+  transform: translateY(1px);
+}
+
+.menu-hotspot:disabled {
+  cursor: not-allowed;
+  border-color: rgba(255, 226, 180, 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 245, 224, 0.05), rgba(255, 245, 224, 0.012)),
+    rgba(7, 5, 7, 0.2);
+  color: rgba(226, 213, 188, 0.72);
+  box-shadow: none;
+}
+
+.menu-hotspot:disabled:hover {
+  transform: none;
+}
+
+.menu-hotspot-start {
+  top: 41.2%;
+}
+
+.menu-hotspot-load {
+  top: 53.9%;
+}
+
+.menu-hotspot-exit {
+  top: 66.5%;
+}
+
+.menu-hotspot-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0 10px;
+  font-family: var(--display-font);
+  font-size: clamp(1.1rem, 1.55vw, 1.52rem);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: inherit;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.72),
+    0 6px 18px rgba(0, 0, 0, 0.34);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+@media (max-width: 780px) {
+  .menu-title-card {
+    width: 100%;
+    min-height: 100vh;
+  }
+
+  .menu-title-marquee {
+    left: 50%;
+    top: 22.4%;
+    width: min(88vw, 620px);
+  }
+
+  .menu-hotspot {
+    left: 38%;
+    width: 24%;
+    height: 7.1%;
+    border-radius: 13px;
+  }
+
+  .menu-hotspot-label {
+    font-size: clamp(0.92rem, 2.8vw, 1.18rem);
+    letter-spacing: 0.05em;
+  }
+}

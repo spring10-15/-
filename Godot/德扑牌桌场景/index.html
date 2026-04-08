@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>德扑酒馆 - 沉浸式视差视角</title>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        /* ================= 基础重置 ================= */
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #050505; font-family: 'Oswald', sans-serif; user-select: none; }
+
+        /* ================= 视差游戏层 (底层) ================= */
+        #game-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        .parallax-layer { position: absolute; top: -5%; left: -5%; width: 110%; height: 110%; background-size: cover; background-position: center; transition: transform 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94); will-change: transform; }
+        
+        #layer-back { background-image: url('./4_background.jpg'); z-index: 1; }
+        #layer-mid { background-image: url('./3_midground.png'); z-index: 2; }
+        
+        /* ================= 烟雾特效层 ================= */
+        #layer-smoke { z-index: 3; pointer-events: none; overflow: hidden; }
+        .smoke-particle {
+            position: absolute;
+            border-radius: 50%;
+            /* 猛药1：把烟雾的初始浓度从 0.08 调高到了 0.4，让它彻底显形 */
+            background: radial-gradient(circle, rgba(200, 200, 200, 0.1) 0%, rgba(200, 200, 200, 0) 70%);
+            filter: blur(15px);
+            opacity: 0;
+            /* 猛药2：显式指定保底的 12s 动画时间，防止浏览器罢工 */
+            animation: float-up 12s linear infinite;
+            will-change: transform, opacity;
+        }
+
+        /* 定义烟雾从小变大、从隐到显再消失的上升过程 */
+        @keyframes float-up {
+            0% { transform: translateY(100px) scale(1) rotate(0deg); opacity: 0; }
+            20% { opacity: 0.8; } /* 猛药3：最高透明度拉到 0.8 */
+            80% { opacity: 0.5; }
+            100% { transform: translateY(-500px) scale(3) rotate(90deg); opacity: 0; } 
+        }
+
+        #layer-front { background-image: url('./1_hands.png'); z-index: 4; pointer-events: none; }
+
+        /* ================= UI 交互层 (顶层) ================= */
+        /* 这个层固定在屏幕上，绝对不会随鼠标晃动 */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; box-sizing: border-box; }
+        
+        /* 恢复 UI 元素本身的点击事件 */
+        .ui-element { pointer-events: auto; }
+
+        /* 1. 顶部信息栏 */
+        .top-bar { display: flex; justify-content: center; width: 100%; }
+        .global-pot { color: #fff; font-size: 1.2rem; letter-spacing: 2px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+        .global-pot span { color: #d4af37; font-weight: 600; }
+
+        /* 中间区域容器 */
+        .middle-section { display: flex; flex: 1; margin-top: 20px; position: relative; }
+
+        /* 2. 左侧导航栏 */
+        .left-sidebar { display: flex; flex-direction: column; gap: 30px; width: 80px; color: rgba(255,255,255,0.6); }
+        .nav-item { display: flex; flex-direction: column; align-items: center; cursor: pointer; font-size: 0.8rem; transition: color 0.2s; }
+        .nav-item:hover, .nav-item.active { color: #fff; }
+        .nav-icon { width: 30px; height: 30px; background-color: rgba(255,255,255,0.1); margin-bottom: 5px; border-radius: 4px; }
+
+        /* 3. 左下角快捷回复 */
+        .quick-replies { position: absolute; bottom: 80px; left: 100px; display: flex; flex-direction: column; gap: 10px; width: 200px; }
+        .quick-replies h3 { color: #fff; font-size: 1rem; margin: 0 0 10px 0; letter-spacing: 1px; }
+        .reply-btn { background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.2); color: #ccc; padding: 8px 15px; border-radius: 4px; text-align: left; cursor: pointer; transition: background 0.2s; font-family: 'Oswald', sans-serif; }
+        .reply-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+        /* 4. 右下角操作按钮 */
+        .action-bar { position: absolute; bottom: 30px; right: 50px; display: flex; gap: 15px; }
+        .action-btn { width: 120px; height: 50px; background: linear-gradient(to bottom, #444, #222); border: 2px solid #555; border-radius: 6px; color: #fff; font-size: 1.2rem; font-family: 'Oswald', sans-serif; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.6); transition: all 0.1s; display: flex; flex-direction: column; justify-content: center; align-items: center; line-height: 1.2; }
+        .action-btn span { font-size: 0.8rem; font-weight: 400; color: #aaa; }
+        .action-btn:active { transform: translateY(2px); box-shadow: 0 1px 2px rgba(0,0,0,0.8); }
+        .btn-all-in { background: linear-gradient(to bottom, #8b0000, #4a0000); border-color: #a00; }
+        .btn-all-in:hover { background: linear-gradient(to bottom, #a00, #600); }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="layer-back" class="parallax-layer"></div>
+        <div id="layer-mid" class="parallax-layer"></div>
+        <div id="layer-smoke" class="parallax-layer"></div> <div id="layer-front" class="parallax-layer"></div>
+    </div>
+
+    <div id="ui-layer">
+        <div class="top-bar ui-element">
+            <div class="global-pot">GLOBAL POT <span>$24,500</span></div>
+        </div>
+
+        <div class="middle-section">
+            <div class="left-sidebar ui-element">
+                <div class="nav-item active"><div class="nav-icon"></div>CHAT</div>
+                <div class="nav-item"><div class="nav-icon"></div>PLAYERS</div>
+                <div class="nav-item"><div class="nav-icon"></div>LOG</div>
+                <div class="nav-item"><div class="nav-icon"></div>VAULT</div>
+            </div>
+        </div>
+
+        <div class="quick-replies ui-element">
+            <h3>QUICK REPLIES</h3>
+            <button class="reply-btn">Random</button>
+            <button class="reply-btn">Check command...</button>
+            <button class="reply-btn">Block party message</button>
+        </div>
+
+        <div class="action-bar ui-element">
+            <button class="action-btn">FOLD</button>
+            <button class="action-btn">CHECK</button>
+            <button class="action-btn">CALL <span>($4,000)</span></button>
+            <button class="action-btn btn-all-in">ALL-IN</button>
+        </div>
+    </div>
+
+    <script>
+        // ================= 烟雾生成系统 =================
+        const smokeLayer = document.getElementById('layer-smoke');
+        
+        function createSmoke() {
+            const particle = document.createElement('div');
+            particle.classList.add('smoke-particle');
+            
+            // 随机化每一个烟雾的形态，打破机械感
+            const size = Math.random() * 200 + 150; 
+            particle.style.width = `${size}px`;
+            particle.style.height = `${size}px`;
+            
+            // 集中在画面中下部产生
+            particle.style.left = `${Math.random() * 60 + 20}%`; 
+            particle.style.bottom = `${Math.random() * 100 - 50}px`;
+            
+            // 随机化飘动速度和初始时间差
+            particle.style.animationDuration = `${Math.random() * 6 + 10}s`; 
+            particle.style.animationDelay = `-${Math.random() * 15}s`; 
+            
+            smokeLayer.appendChild(particle);
+        }
+
+        // 初始化释放 18 团烟雾
+        for(let i = 0; i < 18; i++) {
+            createSmoke();
+        }
+
+        // ================= 视差引擎 =================
+        document.addEventListener('mousemove', (e) => {
+            const x = (e.clientX - window.innerWidth / 2) / 100;
+            const y = (e.clientY - window.innerHeight / 2) / 100;
+            
+            document.getElementById('layer-back').style.transform = `translate(${x * 1}px, ${y * 1}px)`;
+            document.getElementById('layer-mid').style.transform = `translate(${x * -2}px, ${y * -2}px)`;
+            // 烟雾层也会产生视差，比中景移得稍微快一点点
+            document.getElementById('layer-smoke').style.transform = `translate(${x * -3}px, ${y * -3}px)`; 
+            document.getElementById('layer-front').style.transform = `translate(${x * -6}px, ${y * -6}px)`;
+        });
+    </script>
+</body>
+</html>

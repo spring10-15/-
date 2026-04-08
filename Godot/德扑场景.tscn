@@ -1,0 +1,185 @@
+[gd_scene format=3 uid="uid://dcbdhxiiy50wd"]
+
+[ext_resource type="Script" uid="uid://cpuiwum7x5u3s" path="res://德扑场景1.gd" id="1_ec40d"]
+[ext_resource type="Texture2D" uid="uid://c8xsbyogue4oo" path="res://4_background.PNG" id="2_gwchs"]
+[ext_resource type="Texture2D" uid="uid://3or5jx4lsy6d" path="res://3_midground.png" id="3_ec40d"]
+[ext_resource type="Texture2D" uid="uid://cjf5vm8mi36me" path="res://1_hands.png" id="4_2tv5o"]
+[ext_resource type="Texture2D" uid="uid://bd4n1ocx8glan" path="res://Cards/2_of_clubs.png" id="5_2tv5o"]
+
+[sub_resource type="Gradient" id="Gradient_ec40d"]
+colors = PackedColorArray(0.98234254, 0.9823423, 0.9823424, 1, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_2tv5o"]
+gradient = SubResource("Gradient_ec40d")
+width = 100
+height = 100
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+[sub_resource type="Gradient" id="Gradient_pffwe"]
+offsets = PackedFloat32Array(0, 0.4845679, 1)
+colors = PackedColorArray(0.9882353, 0.9882353, 0.9882353, 0, 0.99215686, 0.99215686, 0.99215686, 0.5882353, 1, 1, 1, 0)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pffwe"]
+bg_color = Color(0.7297255, 0.5992435, 0.38806316, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ec40d"]
+bg_color = Color(0.44291076, 0.44291076, 0.44291073, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_2tv5o"]
+bg_color = Color(0.6666667, 0, 0, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_4oli1"]
+content_margin_left = 20.0
+content_margin_top = 10.0
+content_margin_right = 20.0
+content_margin_bottom = 10.0
+bg_color = Color(0.2, 0.2, 0.2, 1)
+border_color = Color(0.24586418, 0.256603, 0.2917153, 1)
+border_blend = true
+corner_detail = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_g124k"]
+content_margin_left = 20.0
+content_margin_top = 10.0
+content_margin_right = 20.0
+content_margin_bottom = 10.0
+bg_color = Color(0.54509807, 0, 0, 1)
+
+[node name="PokerScene" type="Node2D" unique_id=1904756507]
+position = Vector2(688, 382)
+script = ExtResource("1_ec40d")
+
+[node name="PokerVisuals" type="Node2D" parent="." unique_id=1649007547]
+
+[node name="Poker_Bg_Vault" type="Sprite2D" parent="PokerVisuals" unique_id=1536621162]
+texture = ExtResource("2_gwchs")
+
+[node name="Poker_Mid_Table" type="Sprite2D" parent="PokerVisuals" unique_id=1504709911]
+texture = ExtResource("3_ec40d")
+
+[node name="Poker_VFX_Smoke" type="CPUParticles2D" parent="PokerVisuals" unique_id=1218897204]
+position = Vector2(124, 185)
+amount = 4
+texture = SubResource("GradientTexture2D_2tv5o")
+lifetime = 10.0
+emission_shape = 3
+emission_rect_extents = Vector2(400, 50)
+gravity = Vector2(10, -30)
+scale_amount_min = 2.0
+scale_amount_max = 2.0
+color_ramp = SubResource("Gradient_pffwe")
+
+[node name="Poker_Fg_Hands" type="Sprite2D" parent="PokerVisuals" unique_id=471697394]
+position = Vector2(117.5, 188.125)
+scale = Vector2(0.5348011, 0.5029297)
+texture = ExtResource("4_2tv5o")
+
+[node name="Card_Left" type="Sprite2D" parent="PokerVisuals/Poker_Fg_Hands" unique_id=854740019]
+position = Vector2(-55.160637, -43.992195)
+scale = Vector2(0.6616472, 0.51740706)
+texture = ExtResource("5_2tv5o")
+
+[node name="Card_Right" type="Sprite2D" parent="PokerVisuals/Poker_Fg_Hands" unique_id=1267026490]
+
+[node name="PokerUI" type="CanvasLayer" parent="." unique_id=222770959]
+
+[node name="UI_GlobalPot" type="Label" parent="PokerUI" unique_id=165522190]
+offset_left = 382.0
+offset_top = 24.0
+offset_right = 510.0
+offset_bottom = 75.0
+
+[node name="UI_CaseFile" type="Panel" parent="PokerUI" unique_id=675870617]
+offset_left = 10.0
+offset_top = 458.0
+offset_right = 234.0
+offset_bottom = 752.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_pffwe")
+
+[node name="Txt_Stake" type="Label" parent="PokerUI/UI_CaseFile" unique_id=1860756373]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -2.068
+anchor_top = 4.7450004
+anchor_right = -2.068
+anchor_bottom = 4.7450004
+offset_left = 509.23203
+offset_top = -1374.0302
+offset_right = 643.23206
+offset_bottom = -1347.0302
+theme_override_colors/font_color = Color(0.16862746, 0.16862746, 0.16862746, 1)
+text = "CASE FILE #9021"
+
+[node name="Lbl_Pot" type="Label" parent="PokerUI/UI_CaseFile" unique_id=626158673]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -2.068
+anchor_top = 4.7450004
+anchor_right = -2.068
+anchor_bottom = 4.7450004
+offset_left = 486.23203
+offset_top = -1318.0302
+offset_right = 659.23206
+offset_bottom = -1291.0302
+theme_override_colors/font_color = Color(0.16862746, 0.16862746, 0.16862746, 1)
+text = "CURRENT POT: $12800"
+
+[node name="Lbl_Stake" type="Label" parent="PokerUI/UI_CaseFile" unique_id=1523259584]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -2.068
+anchor_top = 4.7450004
+anchor_right = -2.068
+anchor_bottom = 4.7450004
+offset_left = 501.23203
+offset_top = -1262.0302
+offset_right = 652.23206
+offset_bottom = -1235.0302
+theme_override_colors/font_color = Color(0.16862746, 0.16862746, 0.16862746, 1)
+text = "YOUR STAKE: $4000"
+
+[node name="Bar_Risk" type="ProgressBar" parent="PokerUI/UI_CaseFile" unique_id=1531945063]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -9.075001
+anchor_top = 6.037
+anchor_right = -9.075001
+anchor_bottom = 6.037
+offset_left = 2050.8003
+offset_top = -1550.878
+offset_right = 2246.8003
+offset_bottom = -1515.878
+theme_override_styles/background = SubResource("StyleBoxFlat_ec40d")
+theme_override_styles/fill = SubResource("StyleBoxFlat_2tv5o")
+value = 85.0
+show_percentage = false
+
+[node name="UI_ActionBtns" type="HBoxContainer" parent="PokerUI" unique_id=241501546]
+offset_left = 875.0
+offset_top = 688.0
+offset_right = 1335.0
+offset_bottom = 748.0
+theme_override_constants/separation = 15
+
+[node name="Btn_Fold" type="Button" parent="PokerUI/UI_ActionBtns" unique_id=74315019]
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_4oli1")
+text = "FOLD
+"
+
+[node name="Btn_CHECK" type="Button" parent="PokerUI/UI_ActionBtns" unique_id=203304637]
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_4oli1")
+text = "CHECK"
+
+[node name="Btn_Call" type="Button" parent="PokerUI/UI_ActionBtns" unique_id=1895050038]
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_4oli1")
+text = "CALL ($4000)"
+
+[node name="Btn_AllIn" type="Button" parent="PokerUI/UI_ActionBtns" unique_id=1841184039]
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_g124k")
+text = "ALL-IN"

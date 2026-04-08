@@ -1,0 +1,12 @@
+{
+  "name": "poker-tavern-win-then-run",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "python3 -m http.server 4173"
+  },
+  "dependencies": {
+    "playwright": "^1.58.2"
+  }
+}

@@ -1,0 +1,8 @@
+@import "./styles/foundation.css";
+@import "./styles/shared-scene.css";
+@import "./scenes/menu/style.css";
+@import "./scenes/stash/style.css";
+@import "./scenes/tavern/style.css";
+@import "./scenes/poker/style.css";
+@import "./scenes/extraction/style.css";
+@import "./styles/scene-reset.css";
