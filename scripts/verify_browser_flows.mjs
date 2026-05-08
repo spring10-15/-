@@ -4,6 +4,7 @@ import { chromium } from "playwright";
 
 const BASE_URL = "http://127.0.0.1:4173";
 const OUT_DIR = path.resolve("output/browser-full-coverage");
+fs.rmSync(OUT_DIR, { recursive: true, force: true });
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
 function card(code) {
@@ -141,7 +142,7 @@ async function forceRerender(page) {
 async function clickFirstIfPresent(page, selector) {
   const locator = page.locator(selector).first();
   if (await locator.count()) {
-    await locator.evaluate((element) => element.click());
+    await locator.click();
     return true;
   }
   return false;
@@ -158,7 +159,31 @@ async function closeTableSidebar(page) {
 async function clickStable(page, selector) {
   const locator = page.locator(selector).first();
   await locator.waitFor({ state: "visible" });
-  await locator.evaluate((element) => element.click());
+  await locator.click();
+}
+
+async function ensureShopStock(page, itemIds) {
+  await page.evaluate((ids) => {
+    const run = window.__blacklightGame?.state?.run;
+    if (!run) {
+      return;
+    }
+    run.shopStock = Array.from(new Set([...ids, ...(run.shopStock ?? [])]));
+    window.advanceTime?.(16);
+  }, itemIds);
+  await page.waitForTimeout(100);
+}
+
+async function preserveEntryActionPoint(page) {
+  await page.evaluate(() => {
+    const run = window.__blacklightGame?.state?.run;
+    if (!run) {
+      return;
+    }
+    run.actionPoints = Math.max(run.actionPoints ?? 0, 1);
+    window.advanceTime?.(16);
+  });
+  await page.waitForTimeout(100);
 }
 
 async function commitExtraction(page, reviewAction, confirmAction) {
@@ -229,15 +254,32 @@ async function settleRiggedTable(page) {
 async function leaveResolvedTable(page) {
   await page.waitForFunction(() => {
     const state = window.__blacklightGame?.state;
-    return state?.mode === "table" && state.run?.currentTable?.pendingConclusion;
+    const table = state?.run?.currentTable;
+    return state?.mode === "table" && (table?.pendingConclusion || table?.pendingNextHand);
   });
   const continueButton = page.locator('[data-action="continue-table"]').first();
   if (await continueButton.count()) {
-    await continueButton.evaluate((element) => element.click());
-    return;
+    await continueButton.click({ force: true });
+    await page.waitForTimeout(120);
   }
+  const stillWaiting = await page.evaluate(() => {
+    const state = window.__blacklightGame?.state;
+    const table = state?.run?.currentTable;
+    return state?.mode === "table" && Boolean(table?.pendingConclusion || table?.pendingNextHand);
+  });
+  if (stillWaiting) {
+    await page.evaluate(() => {
+      window.__blacklightGame.dispatch("continue-table");
+      window.advanceTime?.(16);
+    });
+  }
+  await page.waitForTimeout(120);
   await page.evaluate(() => {
-    window.__blacklightGame.dispatch("continue-table");
+    const state = window.__blacklightGame?.state;
+    if (state?.mode === "table") {
+      window.__blacklightGame.dispatch("continue-table");
+      window.advanceTime?.(16);
+    }
   });
 }
 
@@ -256,6 +298,7 @@ async function runVisualFlowScenario(context, errors) {
   await page.waitForTimeout(250);
   await capture(page, "tavern");
 
+  await ensureShopStock(page, ["marked-lens"]);
   await clickStable(page, '[data-open-search-modal="services"]');
   await page.waitForTimeout(200);
   await capture(page, "tavern-services");
@@ -281,7 +324,7 @@ async function runVisualFlowScenario(context, errors) {
   await page.waitForTimeout(300);
   await capture(page, "cargo-table");
 
-  if (await clickFirstIfPresent(page, '[data-action="use-table-item"][data-instance-id="item-1"]')) {
+  if (await clickFirstIfPresent(page, '[data-action="use-table-item"]')) {
     await page.waitForTimeout(150);
     await capture(page, "cargo-lens-used");
   }
@@ -303,6 +346,7 @@ async function runVisualFlowScenario(context, errors) {
   await page.waitForTimeout(300);
   await capture(page, "tavern-stage2");
 
+  await ensureShopStock(page, ["signal-lighter", "sleeve-clip"]);
   await clickStable(page, '[data-open-search-modal="services"]');
   await page.waitForTimeout(200);
   await capture(page, "tavern-services-stage2");
@@ -311,27 +355,33 @@ async function runVisualFlowScenario(context, errors) {
   await clickStable(page, '[data-action="buy-item"][data-item-id="sleeve-clip"]');
   await page.waitForTimeout(150);
   await closeSearchModal(page);
+  await preserveEntryActionPoint(page);
 
   await clickStable(page, '[data-open-search-modal="play"]');
   await page.waitForTimeout(200);
-  await page.selectOption('#collateral-mirror-hall', { index: 1 });
-  await capture(page, "tavern-play-mirror");
-  await clickStable(page, '[data-action="enter-table"][data-table-id="mirror-hall"]');
+  const nextTableId =
+    (await page.locator('[data-action="enter-table"]').first().getAttribute('data-table-id')) ??
+    "ledger-cellar";
+  if (await page.locator(`#collateral-${nextTableId}`).count()) {
+    await page.selectOption(`#collateral-${nextTableId}`, { index: 1 });
+  }
+  await capture(page, "tavern-play-next");
+  await clickStable(page, `[data-action="enter-table"][data-table-id="${nextTableId}"]`);
   await expectMode(page, "table");
   await page.waitForTimeout(300);
-  await capture(page, "mirror-table");
+  await capture(page, "next-table");
 
   await clickFirstIfPresent(page, '[data-action="use-table-item"][data-target-id]');
   await page.waitForTimeout(150);
   await clickFirstIfPresent(page, '[data-action="use-table-item"]:has-text("Swap")');
   await page.waitForTimeout(150);
-  await capture(page, "mirror-table-items");
+  await capture(page, "next-table-items");
 
   await rigCurrentTable(page, "win");
   await forceRerender(page);
   await settleRiggedTable(page);
   await page.waitForTimeout(200);
-  await capture(page, "mirror-final-hand");
+  await capture(page, "next-final-hand");
   await leaveResolvedTable(page);
   await expectMode(page, "search");
   await page.waitForTimeout(300);

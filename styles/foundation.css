@@ -132,7 +132,7 @@ body[data-mode="menu"] .page-shell {
 }
 
 body[data-mode="menu"] #game-canvas {
-  display: none;
+  display: block;
 }
 
 body[data-mode="menu"] .ui-root {
@@ -3968,7 +3968,9 @@ select {
 }
 
 .result-scene-shell {
-  grid-template-rows: 1fr auto;
+  grid-template-rows: auto auto;
+  align-content: center;
+  justify-items: center;
 }
 
 .result-hero-shell {

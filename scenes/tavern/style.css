@@ -301,11 +301,18 @@
 }
 
 .search-shell:not(.stash-shell) .scene-modal.services-modal .scene-modal-head {
-  padding-right: 120px;
+  display: none !important;
+}
+
+.search-shell:not(.stash-shell) .scene-modal.services-modal .scene-modal-head {
+  position: relative;
+  padding-right: 28px;
 }
 
 .search-shell:not(.stash-shell) .scene-modal.services-modal > .close-modal-button,
-.search-shell:not(.stash-shell) .scene-modal.services-modal .scene-modal-head .close-modal-button {
+.search-shell:not(.stash-shell) .scene-modal.services-modal .scene-modal-head .close-modal-button,
+.search-shell:not(.stash-shell) .scene-modal.services-modal .tavern-top-close,
+.search-shell:not(.stash-shell) .scene-modal.services-modal .tavern-inline-close {
   position: absolute !important;
   top: 14px !important;
   right: 16px !important;
@@ -315,18 +322,54 @@
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
-  min-width: 84px !important;
+  min-width: 72px !important;
+  min-height: 40px !important;
   width: auto !important;
   max-width: none !important;
-  padding: 10px 16px !important;
+  margin: 0 !important;
+  padding: 10px 14px !important;
   line-height: 1.1;
+  transform: none !important;
+}
+
+.search-shell:not(.stash-shell) .scene-modal.services-modal > .close-modal-button,
+.search-shell:not(.stash-shell) .scene-modal.services-modal .scene-modal-head .close-modal-button,
+.search-shell:not(.stash-shell) .scene-modal.services-modal .tavern-inline-close {
+  display: none !important;
+}
+
+.search-shell:not(.stash-shell) .scene-modal.services-modal .tavern-top-close:hover,
+.search-shell:not(.stash-shell) .scene-modal.services-modal .tavern-top-close:focus-visible,
+.search-shell:not(.stash-shell) .scene-modal.services-modal .tavern-top-close:active {
+  transform: none !important;
+}
+
+.search-shell:not(.stash-shell) .scene-modal.services-modal .tavern-top-close {
+  display: inline-flex !important;
+  position: absolute !important;
+  top: 14px !important;
+  right: 16px !important;
+  left: auto !important;
+  bottom: auto !important;
+  inline-size: auto !important;
+  min-width: 72px !important;
+  max-width: 72px !important;
+  width: 72px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  padding: 0 !important;
+  place-self: start end !important;
+  justify-self: end !important;
+  align-self: start !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
 }
 
 .search-shell:not(.stash-shell) .scene-modal.services-modal .scene-modal-body {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: clamp(102px, 9vw, 126px) clamp(48px, 5vw, 82px) 32px;
+  padding: clamp(84px, 8vw, 108px) clamp(48px, 5vw, 82px) 32px;
 }
 
 .search-shell:not(.stash-shell) .scene-modal.routes-modal .scene-modal-body {
@@ -376,6 +419,15 @@
   width: auto !important;
   max-width: none !important;
   padding: 10px 16px !important;
+}
+
+.search-shell:not(.stash-shell) .scene-modal.services-modal .tavern-top-close {
+  border-radius: 10px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 241, 220, 0.06), rgba(255, 241, 220, 0.01)),
+    rgba(18, 12, 10, 0.76) !important;
+  border: 1px solid rgba(193, 127, 86, 0.48) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22) !important;
 }
 
 .tavern-menu-grid {
@@ -438,33 +490,37 @@
 }
 
 .search-shell:not(.stash-shell) > .scene-modal-layer.tavern-folder-layer {
-  background: rgba(4, 4, 6, 0.92);
+  background: rgba(4, 4, 6, 0.98);
 }
 
 .search-shell:not(.stash-shell) > .scene-modal-layer.tavern-folder-layer > .scene-modal-backdrop {
-  background: rgba(4, 4, 6, 0.92);
+  background: rgba(4, 4, 6, 0.98);
   backdrop-filter: blur(22px) saturate(0.62);
 }
 
+.search-shell:not(.stash-shell):has(> .scene-modal-layer.tavern-folder-layer) .scene-hotspot-layer {
+  opacity: 0;
+}
+
 .search-shell:not(.stash-shell) > .scene-modal-layer.tavern-play-layer {
-  background: rgba(4, 4, 6, 0.92);
+  background: rgba(4, 4, 6, 0.98);
 }
 
 .search-shell:not(.stash-shell) > .scene-modal-layer.tavern-play-layer > .scene-modal-backdrop {
-  background: rgba(4, 4, 6, 0.92);
+  background: rgba(4, 4, 6, 0.98);
   backdrop-filter: blur(18px) saturate(0.68);
 }
 
 .search-shell:not(.stash-shell) .scene-modal.play-modal {
   background:
-    linear-gradient(180deg, rgba(8, 6, 8, 0.48), rgba(5, 4, 6, 0.98)),
-    rgba(5, 4, 6, 0.97);
+    linear-gradient(180deg, rgba(8, 6, 8, 0.58), rgba(5, 4, 6, 0.99)),
+    rgba(5, 4, 6, 0.985);
 }
 
 .search-shell:not(.stash-shell) .scene-modal.play-modal .scene-modal-body {
   background:
-    linear-gradient(180deg, rgba(10, 8, 10, 0.66), rgba(5, 4, 6, 0.94)),
-    rgba(5, 4, 6, 0.9);
+    linear-gradient(180deg, rgba(10, 8, 10, 0.74), rgba(5, 4, 6, 0.97)),
+    rgba(5, 4, 6, 0.95);
 }
 
 .search-shell:not(.stash-shell) .scene-modal.play-modal .drawer-card,
@@ -477,9 +533,29 @@
 }
 
 .search-shell:not(.stash-shell) .scene-modal.folder-modal {
+  isolation: isolate;
   background:
-    linear-gradient(180deg, rgba(8, 6, 8, 0.18), rgba(5, 4, 6, 0.96)),
-    rgba(5, 4, 6, 0.98);
+    linear-gradient(180deg, rgba(13, 10, 9, 0.26), rgba(7, 6, 8, 0.96)),
+    rgba(8, 7, 8, 0.97);
+}
+
+.search-shell:not(.stash-shell) .scene-modal.folder-modal::before {
+  display: block !important;
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 0;
+  background:
+    linear-gradient(180deg, rgba(16, 11, 9, 0.22), rgba(8, 7, 8, 0.82)),
+    url("../../assets/scene-plates/案件夹弹窗.png") center center / cover no-repeat;
+  opacity: 0.94;
+  pointer-events: none;
+}
+
+.search-shell:not(.stash-shell) .scene-modal.folder-modal > * {
+  position: relative;
+  z-index: 1;
 }
 
 .search-shell:not(.stash-shell) .scene-modal.folder-modal .drawer-card,
@@ -492,9 +568,17 @@
 
 .search-shell:not(.stash-shell) .scene-modal.folder-modal .notebook-page {
   background:
-    linear-gradient(180deg, rgba(74, 54, 30, 0.24), rgba(26, 19, 11, 0.36)),
-    rgba(28, 20, 12, 0.34);
-  border-color: rgba(142, 108, 62, 0.22);
+    linear-gradient(180deg, rgba(248, 236, 206, 0.98), rgba(226, 204, 163, 0.92)),
+    rgba(255, 247, 230, 0.94);
+  border-color: rgba(114, 80, 38, 0.2);
+}
+
+.search-shell:not(.stash-shell) .scene-modal.folder-modal .notebook-page.right-page {
+  transform: rotate(0.4deg);
+}
+
+.search-shell:not(.stash-shell) .scene-modal.folder-modal .notebook-page.left-page {
+  transform: rotate(-0.5deg);
 }
 
 /* Subtle gentle floating animation for hotspots */

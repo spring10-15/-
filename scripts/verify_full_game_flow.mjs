@@ -9,7 +9,10 @@ import {
   STARTING_VAULT,
   STORAGE_KEY,
   getItemDef,
+  getTavernSceneDef,
 } from "../src/data.js";
+
+const CURRENT_SCHEMA_VERSION = 20260418;
 
 class MemoryStorage {
   constructor(initial = {}) {
@@ -57,7 +60,7 @@ function bootGame({ persistent, savedRun } = {}) {
     storage.setItem(
       STORAGE_KEY,
       JSON.stringify({
-        schemaVersion: 20260330,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         vault: STARTING_VAULT,
         runCount: 0,
         winCount: 0,
@@ -110,6 +113,19 @@ function card(code) {
     rank: rankMap[rankToken.toUpperCase()] ?? Number(rankToken),
     suit,
   };
+}
+
+function cardCode(card) {
+  if (!card) {
+    return "";
+  }
+  const rank = {
+    11: "J",
+    12: "Q",
+    13: "K",
+    14: "A",
+  }[card.rank] ?? `${card.rank}`;
+  return `${rank}${card.suit}`;
 }
 
 function fillInventoryToCapacity(run) {
@@ -199,6 +215,43 @@ function clearCargoForProgression(game, { playerWins = true } = {}) {
   return run;
 }
 
+function clearToMirrorHall(game) {
+  const run = clearCargoForProgression(game, { playerWins: true });
+  run.cashOnHand = Math.max(run.cashOnHand, 260);
+  const ledger = enterTable(game, "ledger-cellar");
+  assert(ledger, "ledger cellar should open after cargo");
+  rigFinalShowdown(ledger, {
+    playerCards: ["AD", "KH"],
+    opponentCards: [["QD", "QS"], ["JD", "JC"]],
+    boardCards: ["2H", "5H", "9S", "JC", "3D"],
+    playerStack: 180,
+    opponentStacks: [10, 10],
+    pot: 110,
+  });
+  resolveTableAndLeave(game, "player-check");
+  assert(game.state.mode === "search", "ledger cellar should return to search");
+  assert(run.completedTables.includes("ledger-cellar"), "ledger cellar should be marked complete");
+  return run;
+}
+
+function clearToEmbersTable(game) {
+  const run = clearToMirrorHall(game);
+  run.cashOnHand = Math.max(run.cashOnHand, 360);
+  const mirror = enterTable(game, "mirror-hall");
+  assert(mirror, "mirror hall should open before embers");
+  rigFinalShowdown(mirror, {
+    playerCards: ["AS", "AH"],
+    opponentCards: [["KD", "KC"], ["QD", "QC"]],
+    boardCards: ["2H", "5H", "9S", "JC", "3D"],
+    playerStack: 220,
+    opponentStacks: [10, 10],
+    pot: 140,
+  });
+  resolveTableAndLeave(game, "player-check");
+  assert(run.completedTables.includes("mirror-hall"), "mirror hall should be marked complete");
+  return run;
+}
+
 function resolveTableAndLeave(game, action) {
   game.dispatch(action);
   if (game.state.mode === "table" && game.state.run?.currentTable?.pendingConclusion) {
@@ -276,15 +329,12 @@ scenario("entering the tavern locks the run out of hideout-only cash parking", (
   assert(second.game.state.run.floorEntered === true, "load-run should restore the floor-entered flag");
 });
 
-scenario("stash cash works once and then blocks repeats", () => {
+scenario("hideout no longer supports parking cash mid-run", () => {
   const { game } = freshRun();
+  const cashBefore = game.state.run.cashOnHand;
   game.dispatch("stash-cash", { amount: 80 });
-  assert(game.state.run.cashOnHand === 220, "cash should drop after stashing");
-  assert(game.state.run.stashedCash === 80, "stash should increase");
-  assert(game.state.run.actionPoints === 1, "stash should spend one action point");
-  game.dispatch("stash-cash", { amount: 20 });
-  assert(game.state.run.cashOnHand === 220, "second stash should be blocked");
-  assert(game.state.run.stashedCash === 80, "second stash should not change stash");
+  assert(game.state.run.cashOnHand === cashBefore, "cash parking should not exist anymore");
+  assert(game.state.run.stashedCash === 0, "stash value should remain unused");
 });
 
 scenario("intel gathering marks knowledge, blocks repeats, and blocks at zero AP", () => {
@@ -330,9 +380,10 @@ scenario("inventory tools can be sold back for cash in the search phase", () => 
 scenario("reduce heat works once per search phase", () => {
   const { game } = freshRun();
   game.state.run.heat = 2;
+  const sceneCost = getTavernSceneDef(game.state.run.tavernSceneId)?.heatReductionCost ?? 30;
   game.dispatch("reduce-heat");
   assert(game.state.run.heat === 1, "reduce-heat should lower heat");
-  assert(game.state.run.cashOnHand === 270, "reduce-heat should cost 30");
+  assert(game.state.run.cashOnHand === STANDARD_BANKROLL - sceneCost, "reduce-heat should charge the active tavern rate");
   game.dispatch("reduce-heat");
   assert(game.state.run.heat === 1, "second reduce-heat should be blocked in the same phase");
 });
@@ -494,7 +545,7 @@ scenario("cargo reward can be blocked by a full inventory", () => {
 
 scenario("mirror hall collateral returns on a winning final hand", () => {
   const { game } = freshRun();
-  clearCargoForProgression(game, { playerWins: true });
+  clearToMirrorHall(game);
   game.state.run.cashOnHand = 300;
   game.state.run.inventory.push(makeInventoryItem("collateral-1", "ivory-chip"));
   const table = enterTable(game, "mirror-hall", "collateral-1");
@@ -514,7 +565,7 @@ scenario("mirror hall collateral returns on a winning final hand", () => {
 
 scenario("mirror hall collateral is lost on a losing final hand", () => {
   const { game } = freshRun();
-  clearCargoForProgression(game, { playerWins: true });
+  clearToMirrorHall(game);
   game.state.run.cashOnHand = 300;
   game.state.run.inventory.push(makeInventoryItem("collateral-2", "ivory-chip"));
   const table = enterTable(game, "mirror-hall", "collateral-2");
@@ -621,7 +672,7 @@ scenario("marked lens and signal lighter enforce their valid and invalid branche
   assert(Boolean(table.peekCard), "marked lens should reveal the next community card");
   assert(!game.state.run.inventory.some((item) => item.id === "lens-1"), "marked lens should be consumed on use");
 
-  clearCargoForProgression(game, { playerWins: true });
+  clearToMirrorHall(game);
   game.state.run.cashOnHand = 300;
   game.state.run.inventory.push(makeInventoryItem("lighter-1", "signal-lighter"));
   table = enterTable(game, "mirror-hall");
@@ -631,6 +682,35 @@ scenario("marked lens and signal lighter enforce their valid and invalid branche
   game.dispatch("use-table-item", { instanceId: "lighter-1", targetId });
   assert(Boolean(table.signalRead), "signal lighter should create a read when a target is chosen");
   assert(!game.state.run.inventory.some((item) => item.id === "lighter-1"), "signal lighter should be consumed on use");
+});
+
+scenario("marked lens forces the actual next community card even after sleeve clip", () => {
+  const { game } = freshRun();
+  game.state.run.cashOnHand = 300;
+  game.state.run.inventory.push(makeInventoryItem("lens-1", "marked-lens"));
+  game.state.run.inventory.push(makeInventoryItem("clip-1", "sleeve-clip"));
+  const table = enterTable(game, "cargo-table");
+  table.street = "preflop";
+  table.community = [];
+  table.turnCounter = 0;
+  table.currentBet = 0;
+  table.players.forEach((participant) => {
+    participant.currentBet = 0;
+  });
+  table.toAct = ["player"];
+  table.currentActorId = "player";
+  table.legalActions = { player: { fold: true, check: true, raise: true, allIn: true } };
+
+  game.dispatch("use-table-item", { instanceId: "lens-1" });
+  const peeked = cardCode(table.peekCard);
+  assert(Boolean(peeked), "marked lens should set a peeked community card");
+
+  game.dispatch("use-table-item", { instanceId: "clip-1" });
+  assert(cardCode(table.peekCard) === peeked, "sleeve clip should not consume the peeked community card");
+
+  game.dispatch("player-check");
+  assert(table.street === "flop", "checking should advance to the flop in this rigged state");
+  assert(cardCode(table.community[0]) === peeked, "the first dealt flop card should match the marked lens preview");
 });
 
 scenario("sleeve clip swaps a hole card only in its legal window", () => {
@@ -663,6 +743,60 @@ scenario("sleeve clip is reachable before the last playable table", () => {
   assert(
     game.state.run.shopStock.includes("sleeve-clip"),
     "the stage before Mirror Hall should stock Sleeve Clip so its table branch is reachable",
+  );
+});
+
+scenario("embers table profitable close applies its heat relief", () => {
+  const { game } = freshRun();
+  const run = clearToEmbersTable(game);
+  run.cashOnHand = Math.max(run.cashOnHand, 400);
+  run.heat = 3;
+  const scene = getTavernSceneDef(run.tavernSceneId);
+  const expectedEntryHeat = Math.min(
+    6,
+    run.heat + 2 + (scene?.entryHeatBonus ?? 0),
+  );
+  const table = enterTable(game, "embers-table");
+  assert(table, "embers table should open after mirror hall");
+  assert(run.heat === expectedEntryHeat, "embers buy-in should add table and tavern heat before relief");
+  rigFinalShowdown(table, {
+    playerCards: ["AS", "AH"],
+    opponentCards: [["KD", "KC"], ["QD", "QC"]],
+    boardCards: ["2H", "5H", "9S", "JC", "3D"],
+    playerStack: 260,
+    opponentStacks: [10, 10],
+    pot: 160,
+  });
+  resolveTableAndLeave(game, "player-check");
+  assert(run.heat === Math.max(0, expectedEntryHeat - 1), "profitable embers close should cool heat by one");
+});
+
+scenario("general extraction at heat five uses the configured lockdown surcharge", () => {
+  const { game } = freshRun();
+  const run = game.state.run;
+  game.dispatch("enter-floor");
+  run.heat = 5;
+  const scene = getTavernSceneDef(run.tavernSceneId);
+  const costFor = (cash) =>
+    (scene?.generalExtractionFlatFee ?? 30) +
+    Math.floor(cash * (scene?.generalExtractionRate ?? 0.15)) +
+    (scene?.lockdownSurcharge ?? 60);
+  let affordableCash = 1;
+  while (affordableCash < 1000 && affordableCash < costFor(affordableCash)) {
+    affordableCash += 1;
+  }
+  assert(affordableCash < 1000, "test should find an affordable heat-five general extraction amount");
+
+  run.cashOnHand = affordableCash - 1;
+  game.dispatch("extract-general");
+  assert(game.state.mode === "search", "general extraction should not succeed without the heat-five surcharge");
+
+  run.cashOnHand = affordableCash;
+  game.dispatch("extract-general");
+  assert(game.state.mode === "summary", "general extraction should succeed at heat five when surcharge is affordable");
+  assert(
+    game.state.latestSummary.totalSettled === affordableCash - costFor(affordableCash),
+    "heat-five general extraction should subtract base fee plus lockdown surcharge",
   );
 });
 

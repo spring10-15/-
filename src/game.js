@@ -1,5 +1,4 @@
 import {
-  FIXED_ROUTE_POOL,
   INVENTORY_SLOTS,
   ITEM_DEFS,
   SEARCH_ACTIONS,
@@ -9,9 +8,14 @@ import {
   STORAGE_KEY,
   TABLE_ORDER,
   TABLES,
+  TAVERN_SCENE_ORDER,
+  getTavernSceneDef,
+  getFixedRoutePool,
   getHeatBand,
   getItemDef,
   getOpponentDef,
+  getSpecialExtractionRoute,
+  getSpecialExtractionRoutes,
   getShopStock,
   getTableDef,
 } from "./data.js";
@@ -24,6 +28,12 @@ import {
   shuffleDeck,
 } from "./poker.js";
 import { chooseAiAction, classifyRead } from "./ai.js";
+import {
+  compressLocalOpponentMemory,
+  createLocalOpponentResponse,
+  getCachedOpponentResponse,
+  prefetchOpponentResponses,
+} from "./ai_native.js";
 import {
   formatMessage,
   getLocalizedItem,
@@ -39,7 +49,8 @@ import {
 
 const TABLE_ACTION_DELAY_MS = typeof window === "undefined" ? 0 : 1120;
 const TABLE_REVEAL_DELAY_MS = typeof window === "undefined" ? 0 : 1620;
-const PERSISTENT_SCHEMA_VERSION = 20260330;
+const PERSISTENT_SCHEMA_VERSION = 20260418;
+const ARCHETYPE_AUTO_REVEAL_HANDS = 4;
 
 export function createGame() {
   const persistentState = loadPersistentState();
@@ -87,6 +98,60 @@ export function createGame() {
       return "";
     }
     return getLocalizedRoute(route.id, currentLanguage())?.name ?? route.name;
+  }
+
+  function getRunSceneId(run = state.run) {
+    return run?.tavernSceneId ?? TAVERN_SCENE_ORDER[0];
+  }
+
+  function getRunSceneDef(run = state.run) {
+    return getTavernSceneDef(getRunSceneId(run));
+  }
+
+  function getRunFixedRoutePool(run = state.run) {
+    return getFixedRoutePool(getRunSceneId(run));
+  }
+
+  function getRunSpecialRoutes(run = state.run) {
+    return getSpecialExtractionRoutes(getRunSceneId(run));
+  }
+
+  function getRunSpecialRoute(routeKey, run = state.run) {
+    const route = getRunSpecialRoutes(run)?.[routeKey] ?? null;
+    if (!route) {
+      return null;
+    }
+    const overrideCost = run?.specialRouteCosts?.[routeKey];
+    if (!Number.isFinite(overrideCost)) {
+      return route;
+    }
+    return {
+      ...route,
+      finalCost: overrideCost,
+    };
+  }
+
+  function revealOpponentArchetype(opponentId, reason = "notes", handsSeen = 0) {
+    const opponent = getOpponentDef(opponentId);
+    if (!opponent) {
+      return null;
+    }
+    const known = {
+      ...(state.persistent.knownOpponents?.[opponentId] ?? {}),
+      seen: Math.max(state.persistent.knownOpponents?.[opponentId]?.seen ?? 0, 1),
+      handsSeen: Math.max(state.persistent.knownOpponents?.[opponentId]?.handsSeen ?? 0, handsSeen),
+      tableId: state.run?.currentTable?.tableDef?.id ?? state.persistent.knownOpponents?.[opponentId]?.tableId ?? null,
+      lastAction: state.persistent.knownOpponents?.[opponentId]?.lastAction ?? null,
+      archetypeKnown: true,
+      archetype: opponent.archetype,
+      revealedBy: reason,
+    };
+    state.persistent.knownOpponents = {
+      ...(state.persistent.knownOpponents ?? {}),
+      [opponentId]: known,
+    };
+    savePersistent();
+    return opponent;
   }
 
   function actorName(participant) {
@@ -237,6 +302,104 @@ export function createGame() {
     participant.lastAction = kind === "raise" ? "bet" : kind;
   }
 
+  function rememberPlayerActionPattern(table, kind) {
+    if (kind === "raise") {
+      table.playerPattern.raiseCount += 1;
+      table.playerPattern.aggressiveActions += 1;
+      return;
+    }
+    if (kind === "all-in") {
+      table.playerPattern.raiseCount += 1;
+      table.playerPattern.allInCount += 1;
+      table.playerPattern.aggressiveActions += 1;
+      return;
+    }
+    if (kind === "fold") {
+      table.playerPattern.foldCount += 1;
+      return;
+    }
+    if (kind === "call") {
+      table.playerPattern.callCount += 1;
+      return;
+    }
+    if (kind === "check") {
+      table.playerPattern.checkCount += 1;
+    }
+  }
+
+  function refreshOpponentBanter(table, trigger, target = null) {
+    table.players
+      .filter((participant) => participant.id !== "player")
+      .forEach((participant) => {
+        if (target && target.id !== participant.id) {
+          return;
+        }
+        const playerAction = trigger.startsWith("player-") ? trigger.slice("player-".length) : null;
+        const response =
+          playerAction ? getCachedOpponentResponse(table, participant, playerAction) : null;
+        const aiResponse =
+          response ??
+          createLocalOpponentResponse({
+            table,
+            participant,
+            language: currentLanguage(),
+            trigger,
+            playerAction,
+            memory: state.persistent.knownOpponents?.[participant.id] ?? {},
+          });
+        participant.aiNative = {
+          ...(participant.aiNative ?? {}),
+          ...aiResponse,
+          trigger,
+        };
+        participant.banter = aiResponse.dialogue;
+        participant.tell = aiResponse.tell;
+        participant.tensionLevel = aiResponse.tension_level;
+        participant.aiStatus = aiResponse.status;
+      });
+  }
+
+  function prefetchTableResponses(table) {
+    table.players
+      .filter((participant) => participant.id !== "player")
+      .forEach((participant) => {
+        prefetchOpponentResponses(table, participant, {
+          language: currentLanguage(),
+          memory: state.persistent.knownOpponents?.[participant.id] ?? {},
+        });
+      });
+  }
+
+  function rememberAiNativeHandMemory(table) {
+    const nextKnownOpponents = { ...(state.persistent.knownOpponents ?? {}) };
+    table.players
+      .filter((participant) => participant.id !== "player")
+      .forEach((participant) => {
+        const compressed = compressLocalOpponentMemory({
+          table,
+          participant,
+          language: currentLanguage(),
+        });
+        const previous = nextKnownOpponents[participant.id] ?? {};
+        const sessionNotes = [
+          compressed.summary,
+          ...(previous.sessionNotes ?? []),
+        ]
+          .filter(Boolean)
+          .slice(0, 10);
+        nextKnownOpponents[participant.id] = {
+          ...previous,
+          sessionNotes,
+          memorySummary: sessionNotes.slice(0, 3).join(currentLanguage() === "zh" ? "；" : "; "),
+          reputationTowardPlayer: Math.max(
+            -100,
+            Math.min(100, (previous.reputationTowardPlayer ?? 0) + compressed.reputationDelta),
+          ),
+        };
+      });
+    state.persistent.knownOpponents = nextKnownOpponents;
+  }
+
   function addCommittedChips(table, participant, amount) {
     if (!amount) {
       return;
@@ -332,6 +495,7 @@ export function createGame() {
     savePersistent();
     state.run = createRun(bankroll);
     syncRouteIntel(state.run);
+    syncPressureWarnings(state.run);
     state.mode = "search";
     state.handoffBeat = null;
     saveRunSnapshot();
@@ -351,6 +515,7 @@ export function createGame() {
     }
     state.run = snapshot.run;
     syncRouteIntel(state.run);
+    syncPressureWarnings(state.run);
     state.mode = snapshot.mode === "table" ? "table" : "search";
     state.latestSummary = null;
     state.handoffBeat = null;
@@ -444,9 +609,6 @@ export function createGame() {
       case "enter-floor":
         enterFloor();
         break;
-      case "stash-cash":
-        stashCash(payload.amount);
-        break;
       case "gather-intel":
         gatherIntel(payload.tableId, payload.layer);
         break;
@@ -483,6 +645,12 @@ export function createGame() {
       case "extract-dropbag-valuables":
         attemptExtraction("dropbag-valuables");
         break;
+      case "extract-service-stairs":
+        attemptExtraction("service-stairs");
+        break;
+      case "extract-river-launch":
+        attemptExtraction("river-launch");
+        break;
       case "player-fold":
       case "player-check":
       case "player-call":
@@ -502,42 +670,22 @@ export function createGame() {
 
     if (state.run) {
       syncRouteIntel(state.run);
+      syncPressureWarnings(state.run);
     }
 
     if (state.run && state.mode === "search") {
-      maybeFailRun("The room has gone dry before you found a way out.");
+      enforceHeatPressure(state.run);
+    }
+
+    if (state.run && state.mode === "search") {
+      maybeFailRun(
+        currentLanguage() === "zh"
+          ? "整层楼开始收口了，你不能再继续拖下去。"
+          : "The floor is closing in. You cannot afford to stall any longer.",
+      );
     }
 
     saveRunSnapshot();
-  }
-
-  function stashCash(amount) {
-    const run = state.run;
-    if (state.mode !== "search") {
-      return;
-    }
-    if (run.floorEntered) {
-      return;
-    }
-    if (run.phase.stashUsed) {
-      notify(msg("stashAlreadyUsed"));
-      return;
-    }
-    if (run.actionPoints <= 0) {
-      notify(msg("noSearchActionPoints"));
-      return;
-    }
-    const safeAmount = Math.max(0, Math.floor(Number(amount) || 0));
-    if (safeAmount <= 0 || safeAmount > run.cashOnHand) {
-      notify(msg("stashInvalidAmount"));
-      return;
-    }
-    run.cashOnHand -= safeAmount;
-    run.stashedCash += safeAmount;
-    run.phase.stashUsed = true;
-    run.actionPoints -= 1;
-    pushRunLog(run, msg("stashedLog", { amount: safeAmount }));
-    notify(msg("stashedNotify", { amount: safeAmount }));
   }
 
   function gatherIntel(tableId, layer) {
@@ -588,6 +736,8 @@ export function createGame() {
     run.cashOnHand -= itemDef.buy;
     run.inventory.push(createInventoryItem(itemId));
     run.actionPoints -= 1;
+    rememberPersistentPurchaseState(state.persistent, itemId, itemDef.buy);
+    savePersistent();
     pushRunLog(run, msg("boughtItemLog", { item: itemName(itemId), price: itemDef.buy }));
     notify(msg("boughtItemNotify", { item: itemName(itemId) }));
   }
@@ -645,6 +795,8 @@ export function createGame() {
 
   function reduceHeat() {
     const run = state.run;
+    const scene = getRunSceneDef(run);
+    const cost = scene?.heatReductionCost ?? 30;
     if (state.mode !== "search") {
       return;
     }
@@ -652,20 +804,21 @@ export function createGame() {
       notify(msg("heatReducedAlready"));
       return;
     }
-    if (run.actionPoints <= 0 || run.cashOnHand < 30 || run.heat <= 0) {
+    if (run.actionPoints <= 0 || run.cashOnHand < cost || run.heat <= 0) {
       notify(msg("heatReductionUnavailable"));
       return;
     }
-    run.cashOnHand -= 30;
+    run.cashOnHand -= cost;
     run.heat = Math.max(0, run.heat - 1);
     run.phase.heatReduced = true;
     run.actionPoints -= 1;
-    pushRunLog(run, msg("reduceHeatLog"));
-    notify(msg("reduceHeatNotify"));
+    pushRunLog(run, currentLanguage() === "zh" ? `花了 ${cost} 压低风声。` : `Paid ${cost} to cool the heat.` );
+    notify(currentLanguage() === "zh" ? `风声降低了，花费 ${cost}。` : `Heat reduced for ${cost}.`);
   }
 
   function reserveFixedRoute() {
     const run = state.run;
+    const scene = getRunSceneDef(run);
     if (state.mode !== "search") {
       return;
     }
@@ -678,15 +831,17 @@ export function createGame() {
       notify(msg("noFixedRouteOffer"));
       return;
     }
-    if (run.actionPoints <= 0 || run.cashOnHand < route.reserveCost) {
+    const reserveCost = Math.max(10, route.reserveCost - (scene?.fixedRouteReserveDiscount ?? 0));
+    if (run.actionPoints <= 0 || run.cashOnHand < reserveCost) {
       notify(msg("cannotReserveRoute"));
       return;
     }
-    run.cashOnHand -= route.reserveCost;
+    run.cashOnHand -= reserveCost;
     run.actionPoints -= 1;
     run.fixedRouteReservation = {
       ...route,
-      expiresAfterSearch: run.searchIndex + 1,
+      reserveCost,
+      expiresAfterSearch: run.searchIndex + Math.max(1, scene?.fixedRouteGraceSearches ?? 1),
     };
     pushRunLog(run, msg("reservedRouteLog", { route: routeName(route) }));
     notify(msg("reservedRouteNotify", { route: routeName(route) }));
@@ -743,11 +898,48 @@ export function createGame() {
       removeInventoryItem(run, inventoryItem.id);
       pushRunLog(run, msg("phoneRevealLog", { table: tableName(tableId) }));
       notify(msg("phoneRevealNotify", { table: tableName(tableId) }));
+      return;
+    }
+
+    if (itemDef.unlockRoute) {
+      const routeId = itemDef.unlockRoute;
+      const route = getRunSpecialRoute(routeId, run);
+      const scene = getRunSceneDef(run);
+      const revealFlag = route?.revealFlag;
+      if (!route || !revealFlag) {
+        notify(currentLanguage() === "zh" ? "这条隐线现在接不上。" : "That hidden route is not available here.");
+        return;
+      }
+      if (run.routeIntel?.[revealFlag]) {
+        notify(currentLanguage() === "zh" ? "这条隐线已经摸清了。" : "That hidden route is already known.");
+        return;
+      }
+      run.routeIntel[revealFlag] = true;
+      if (scene?.hiddenRouteRevealDiscount && Number.isFinite(route.finalCost)) {
+        run.specialRouteCosts = {
+          ...(run.specialRouteCosts ?? {}),
+          [routeId]: Math.max(10, route.finalCost - scene.hiddenRouteRevealDiscount),
+        };
+      }
+      run.actionPoints -= 1;
+      removeInventoryItem(run, inventoryItem.id);
+      pushRunLog(
+        run,
+        currentLanguage() === "zh"
+          ? `用了 ${itemName(inventoryItem.itemId)}，探出了 ${routeName(route)}。`
+          : `Used ${itemName(inventoryItem.itemId)} and revealed ${routeName(route)}.`,
+      );
+      notify(
+        currentLanguage() === "zh"
+          ? `新撤离线已出现：${routeName(route)}`
+          : `New route unlocked: ${routeName(route)}`,
+      );
     }
   }
 
   function enterTable(tableId, collateralId) {
     const run = state.run;
+    const scene = getRunSceneDef(run);
     if (state.mode !== "search") {
       return;
     }
@@ -770,25 +962,28 @@ export function createGame() {
 
     const collateral = collateralId ? takeCollateral(run, collateralId, tableId) : null;
     run.cashOnHand -= tableDef.buyIn;
-    run.heat = Math.min(6, run.heat + tableDef.heatGain);
+    run.heat = Math.min(6, run.heat + tableDef.heatGain + (scene?.entryHeatBonus ?? 0));
     run.currentTable = createTableState(run, tableDef, collateral);
     state.mode = "table";
-    notify(msg("satAtTable", { table: tableName(tableDef), heatGain: tableDef.heatGain }));
+    notify(msg("satAtTable", { table: tableName(tableDef), heatGain: tableDef.heatGain + (scene?.entryHeatBonus ?? 0) }));
     progressTable();
   }
 
   function attemptExtraction(type) {
     const run = state.run;
+    const scene = getRunSceneDef(run);
     if (state.mode !== "search") {
       return;
     }
 
     const valuables = run.inventory.filter((item) => getItemDef(item.itemId).kind === "valuable");
-    const stashNet = projectStashNet(run.stashedCash);
+    const stashNet = { gross: 0, fee: 0, net: 0 };
     let settledCash = run.cashOnHand;
     let settledValuables = valuables.slice();
     let costs = [];
     let routeLabel = "Unknown route";
+    let forced = Boolean(run.forcedExtractionPending);
+    let forcedReason = run.forcedExtractionReason ?? null;
 
     if (type === "general") {
       routeLabel = currentLanguage() === "zh" ? "公开撤离" : "General Extraction";
@@ -800,9 +995,9 @@ export function createGame() {
         notify(msg("generalExtractionShut"));
         return;
       }
-      let fee = 30 + Math.floor(run.cashOnHand * 0.15);
+      let fee = (scene?.generalExtractionFlatFee ?? 30) + Math.floor(run.cashOnHand * (scene?.generalExtractionRate ?? 0.15));
       if (run.heat === 5) {
-        fee += 60;
+        fee += scene?.lockdownSurcharge ?? 60;
       }
       if (run.cashOnHand < fee) {
         notify(msg("notEnoughForGeneralExtractionFee"));
@@ -867,6 +1062,24 @@ export function createGame() {
       settledValuables = [];
       costs.push(msg("dropBagFee"));
       costs.push(msg("dropBagDumpGoods"));
+    } else if (type === "service-stairs" || type === "river-launch") {
+      const route = getRunSpecialRoute(type, run);
+      const revealFlag = route?.revealFlag;
+      routeLabel = routeName(route) || (currentLanguage() === "zh" ? "隐藏路线" : "Hidden Route");
+      if (!revealFlag || !run.routeIntel?.[revealFlag]) {
+        notify(msg("noFixedRouteLead"));
+        return;
+      }
+      if (run.heat > route.maxHeat) {
+        notify(msg("fixedRouteClosedByHeat"));
+        return;
+      }
+      if (run.cashOnHand < route.finalCost) {
+        notify(msg("cannotPayFixedRoute"));
+        return;
+      }
+      settledCash -= route.finalCost;
+      costs.push(currentLanguage() === "zh" ? `${routeName(route)} / ${route.finalCost}` : `${routeName(route)} / ${route.finalCost}`);
     } else {
       return;
     }
@@ -887,7 +1100,7 @@ export function createGame() {
       routeLabel,
       totalSettled,
       settledCash: Math.max(0, settledCash),
-      stashGross: run.stashedCash,
+      stashGross: 0,
       stashNet: stashNet.net,
       stashFee: stashNet.fee,
       valuableTotal,
@@ -899,7 +1112,43 @@ export function createGame() {
       costs,
       heat: run.heat,
       completedTables: run.completedTables.slice(),
+      forced,
+      forcedReason,
+      sceneId: getRunSceneId(run),
     };
+    state.persistent.careerCash = state.persistent.vault;
+    state.persistent.lastRunHeat = run.heat;
+    if (forced) {
+      state.persistent.forcedExitCount = (state.persistent.forcedExitCount ?? 0) + 1;
+    }
+    state.persistent.sceneLedger = {
+      ...(state.persistent.sceneLedger ?? {}),
+      [getRunSceneId(run)]: {
+        runs: ((state.persistent.sceneLedger ?? {})[getRunSceneId(run)]?.runs ?? 0) + 1,
+        wins: ((state.persistent.sceneLedger ?? {})[getRunSceneId(run)]?.wins ?? 0) + 1,
+        arrests: ((state.persistent.sceneLedger ?? {})[getRunSceneId(run)]?.arrests ?? 0),
+      },
+    };
+    state.persistent.history = [
+      {
+        success: true,
+        routeLabel,
+        totalSettled,
+        heat: run.heat,
+        valuables: settledValuables.map((item) => item.itemId),
+        forced,
+        forcedReason,
+        sceneId: getRunSceneId(run),
+      },
+      ...(state.persistent.history ?? []),
+    ].slice(0, 20);
+    if (settledValuables.length) {
+      state.persistent.securedItems = [
+        ...settledValuables.map((item) => item.itemId),
+        ...(state.persistent.securedItems ?? []),
+      ].slice(0, 40);
+    }
+    savePersistent();
     clearRunSnapshot();
     state.run = null;
     state.mode = "summary";
@@ -909,9 +1158,12 @@ export function createGame() {
 
   function maybeFailRun(reason) {
     const run = state.run;
+    const scene = getRunSceneDef(run);
     if (!run || state.mode !== "search") {
       return;
     }
+    const serviceRoute = getRunSpecialRoute("service-stairs", run);
+    const riverRoute = getRunSpecialRoute("river-launch", run);
     const remainingPlayableTables = TABLE_ORDER.filter((tableId) => {
       const table = getTableDef(tableId);
       if (run.completedTables.includes(tableId)) {
@@ -926,6 +1178,12 @@ export function createGame() {
     const canExtract =
       canUseGeneralExtraction(run) ||
       canUseFixedExtraction(run) ||
+      (run.routeIntel?.serviceStairs &&
+        run.heat <= serviceRoute.maxHeat &&
+        run.cashOnHand >= serviceRoute.finalCost) ||
+      (run.routeIntel?.riverLaunch &&
+        run.heat <= riverRoute.maxHeat &&
+        run.cashOnHand >= riverRoute.finalCost) ||
       canUseDropBag(run, "cash") ||
       canUseDropBag(run, "valuables");
 
@@ -935,22 +1193,31 @@ export function createGame() {
 
     const wallet = run.inventory.find((item) => item.itemId === "false-bottom-wallet");
     let salvaged = 0;
+    let seizedCash = run.cashOnHand;
+    let seizedValuables = run.inventory
+      .filter((item) => getItemDef(item.itemId).kind === "valuable")
+      .reduce((sum, item) => sum + getItemDef(item.itemId).value, 0);
     if (wallet && run.cashOnHand > 0) {
       salvaged = Math.min(80, run.cashOnHand);
       state.persistent.vault += salvaged;
       savePersistent();
+      seizedCash = Math.max(0, run.cashOnHand - salvaged);
     }
     state.persistent.runCount += 1;
     savePersistent();
+    const failureReason =
+      run.heat >= 6
+        ? currentLanguage() === "zh"
+          ? "风声封死了楼层，你在出口前被按住了。"
+          : "Lockdown heat sealed the floor and you were grabbed before the exit."
+        : reason;
     state.latestSummary = {
       success: false,
-      reason,
+      reason: failureReason,
       salvaged,
       lostCash: run.cashOnHand,
-      lostStash: run.stashedCash,
-      lostValuables: run.inventory
-        .filter((item) => getItemDef(item.itemId).kind === "valuable")
-        .reduce((sum, item) => sum + getItemDef(item.itemId).value, 0),
+      lostStash: 0,
+      lostValuables: seizedValuables,
       lostValuableNames: run.inventory
         .filter((item) => getItemDef(item.itemId).kind === "valuable")
         .map((item) => ({
@@ -958,12 +1225,44 @@ export function createGame() {
           name: itemName(item.itemId),
         })),
       completedTables: run.completedTables.slice(),
+      forced: true,
+      forcedReason: "caught",
+      caught: true,
+      sceneId: getRunSceneId(run),
+      seizedCash,
+      seizedValuables,
     };
+    state.persistent.careerCash = state.persistent.vault;
+    state.persistent.lastRunHeat = run.heat;
+    state.persistent.arrestCount = (state.persistent.arrestCount ?? 0) + 1;
+    state.persistent.caughtRunCount = (state.persistent.caughtRunCount ?? 0) + 1;
+    state.persistent.seizedCashTotal = (state.persistent.seizedCashTotal ?? 0) + seizedCash;
+    state.persistent.seizedValuableTotal = (state.persistent.seizedValuableTotal ?? 0) + seizedValuables;
+    state.persistent.sceneLedger = {
+      ...(state.persistent.sceneLedger ?? {}),
+      [getRunSceneId(run)]: {
+        runs: ((state.persistent.sceneLedger ?? {})[getRunSceneId(run)]?.runs ?? 0) + 1,
+        wins: ((state.persistent.sceneLedger ?? {})[getRunSceneId(run)]?.wins ?? 0),
+        arrests: ((state.persistent.sceneLedger ?? {})[getRunSceneId(run)]?.arrests ?? 0) + 1,
+      },
+    };
+    state.persistent.history = [
+      {
+        success: false,
+        reason: failureReason,
+        heat: run.heat,
+        lostCash: run.cashOnHand,
+        sceneId: getRunSceneId(run),
+        caught: true,
+      },
+      ...(state.persistent.history ?? []),
+    ].slice(0, 20);
+    savePersistent();
     clearRunSnapshot();
     state.run = null;
     state.mode = "summary";
     state.handoffBeat = null;
-    notify(reason);
+    notify(failureReason);
   }
 
   function takePlayerTableAction(kind) {
@@ -1017,7 +1316,7 @@ export function createGame() {
         return;
       }
       table.itemUsage.markedLens = true;
-      run.heat = Math.min(6, run.heat + itemDef.heat);
+      applyTableToolHeat(run, table, itemDef);
       table.peekCard = getNextCommunityPreview(table);
       table.spentToolMoments.push({
         itemId: item.itemId,
@@ -1048,6 +1347,7 @@ export function createGame() {
         descriptor: localizeReadDescriptor(baseRead.descriptor, currentLanguage()),
       };
       table.itemUsage.signalLighter = true;
+      applyTableToolHeat(run, table, itemDef);
       table.signalRead = {
         targetId: target.id,
         label: read.label,
@@ -1068,6 +1368,37 @@ export function createGame() {
       setStageCue(table, read.tone, itemName(item.itemId), msg("signalCueText", { target: targetDisplay, descriptor: read.descriptor }));
       return;
     }
+    if (item.itemId === "player-notes") {
+      if (!targetId) {
+        notify(currentLanguage() === "zh" ? "选择一名对手再使用玩家笔记。" : "Pick an opponent before using Player Notes.");
+        return;
+      }
+      const target = table.players.find((player) => player.id === targetId);
+      if (!target || target.id === "player") {
+        return;
+      }
+      const opponent = revealOpponentArchetype(target.id, "notes");
+      if (!opponent) {
+        return;
+      }
+      applyTableToolHeat(run, table, itemDef);
+      removeInventoryItem(run, instanceId);
+      pushTableLog(
+        table,
+        currentLanguage() === "zh"
+          ? `你翻开玩家笔记，确认 ${actorName(target)} 是 ${msg(opponent.archetype)}。`
+          : `You open the notes and confirm ${actorName(target)} is a ${msg(opponent.archetype)}.`,
+      );
+      setStageCue(
+        table,
+        "cool",
+        itemName(item.itemId),
+        currentLanguage() === "zh"
+          ? `${actorName(target)} 的标签已记录：${msg(opponent.archetype)}。`
+          : `${actorName(target)} is logged as ${msg(opponent.archetype)}.`,
+      );
+      return;
+    }
     if (item.itemId === "sleeve-clip") {
       if (
         table.itemUsage.sleeveClip ||
@@ -1078,10 +1409,10 @@ export function createGame() {
         notify(msg("sleeveUnavailable"));
         return;
       }
-      const replacement = drawCard(table.deck);
+      const replacement = drawTableReplacementCard(table);
       table.players[0].holeCards[1] = replacement;
       table.itemUsage.sleeveClip = true;
-      run.heat = Math.min(6, run.heat + itemDef.heat);
+      applyTableToolHeat(run, table, itemDef);
       table.spentToolMoments.push({
         itemId: item.itemId,
         name: itemName(item.itemId),
@@ -1147,6 +1478,12 @@ export function createGame() {
     if (kind === "fold") {
       participant.folded = true;
       rememberLastAction(participant, "fold");
+      if (participant.id === "player") {
+        rememberPlayerActionPattern(table, kind);
+        refreshOpponentBanter(table, "player-fold");
+      } else {
+        refreshOpponentBanter(table, "actor-fold", participant);
+      }
       pushTableLog(table, msg("actorFolds", { actor: actorLabel }));
       afterAction(table, participant, kind);
       return;
@@ -1154,6 +1491,12 @@ export function createGame() {
 
     if (kind === "check") {
       rememberLastAction(participant, "check");
+      if (participant.id === "player") {
+        rememberPlayerActionPattern(table, kind);
+        refreshOpponentBanter(table, "player-check");
+      } else {
+        refreshOpponentBanter(table, "actor-check", participant);
+      }
       pushTableLog(table, msg("actorChecks", { actor: actorLabel }));
       afterAction(table, participant, kind);
       return;
@@ -1169,6 +1512,12 @@ export function createGame() {
       }
       addCommittedChips(table, participant, callCost);
       rememberLastAction(participant, "call");
+      if (participant.id === "player") {
+        rememberPlayerActionPattern(table, kind);
+        refreshOpponentBanter(table, "player-call");
+      } else {
+        refreshOpponentBanter(table, "actor-call", participant);
+      }
       pushTableLog(table, msg("actorCalls", { actor: actorLabel, amount: callCost }));
       afterAction(table, participant, kind);
       return;
@@ -1210,10 +1559,13 @@ export function createGame() {
             }),
       );
       rememberLastAction(participant, "bet");
-      afterAction(table, participant, kind, true);
       if (participant.id === "player") {
-        table.playerPattern.raiseCount += 1;
+        rememberPlayerActionPattern(table, kind);
+        refreshOpponentBanter(table, "player-raise");
+      } else {
+        refreshOpponentBanter(table, "actor-bet", participant);
       }
+      afterAction(table, participant, kind, true);
       return;
     }
 
@@ -1230,6 +1582,12 @@ export function createGame() {
         table.raiseUsed = true;
       }
       rememberLastAction(participant, "all-in");
+      if (participant.id === "player") {
+        rememberPlayerActionPattern(table, kind);
+        refreshOpponentBanter(table, "player-all-in");
+      } else {
+        refreshOpponentBanter(table, "actor-all-in", participant);
+      }
       pushTableLog(
         table,
         reopensAction
@@ -1237,9 +1595,6 @@ export function createGame() {
           : msg("actorShovesShort", { actor: actorLabel, amount: targetBet }),
       );
       afterAction(table, participant, kind, reopensAction);
-      if (participant.id === "player") {
-        table.playerPattern.raiseCount += 1;
-      }
     }
   }
 
@@ -1273,13 +1628,16 @@ export function createGame() {
     });
     table.currentBet = 0;
     table.raiseUsed = false;
-    table.peekCard = null;
     table.signalRead = null;
     table.stageCue = null;
 
     if (table.street === "preflop") {
       table.street = "flop";
-      table.community.push(drawCard(table.deck), drawCard(table.deck), drawCard(table.deck));
+      table.community.push(
+        drawNextCommunityCard(table),
+        drawNextCommunityCard(table),
+        drawNextCommunityCard(table),
+      );
       pushTableLog(table, msg("flopCards", { cards: prettyCards(table.community) }));
       setStageCue(
         table,
@@ -1289,7 +1647,7 @@ export function createGame() {
       );
     } else if (table.street === "flop") {
       table.street = "turn";
-      table.community.push(drawCard(table.deck));
+      table.community.push(drawNextCommunityCard(table));
       pushTableLog(table, msg("turnCard", { card: prettyCard(table.community[3]) }));
       setStageCue(
         table,
@@ -1299,7 +1657,7 @@ export function createGame() {
       );
     } else if (table.street === "turn") {
       table.street = "river";
-      table.community.push(drawCard(table.deck));
+      table.community.push(drawNextCommunityCard(table));
       pushTableLog(table, msg("riverCard", { card: prettyCard(table.community[4]) }));
       setStageCue(
         table,
@@ -1317,6 +1675,7 @@ export function createGame() {
     table.toAct = orderedPostflopAction(table).map((player) => player.id);
     table.currentActorId = table.toAct[0] ?? null;
     table.legalActions = buildLegalActionMap(table);
+    prefetchTableResponses(table);
     if (!table.currentActorId || table.currentActorId !== "player") {
       scheduleTableBeat("auto", TABLE_REVEAL_DELAY_MS);
     }
@@ -1339,6 +1698,9 @@ export function createGame() {
       return;
     }
     const winner = survivors[0];
+    if (winner.id === "player" && (table.playerPattern.aggressiveActions ?? 0) > 0) {
+      table.playerPattern.bluffWins += 1;
+    }
     const winnerTake = table.pot;
     winner.stack += table.pot;
     const text = msg("winnerUncontested", { winner: actorName(winner) });
@@ -1371,6 +1733,7 @@ export function createGame() {
         })),
     };
     finishHand(table, [winner.id]);
+    refreshOpponentBanter(table, "fold-win");
   }
 
   function resolveShowdown(table) {
@@ -1464,6 +1827,7 @@ export function createGame() {
       table,
       primaryWinnerIds,
     );
+    refreshOpponentBanter(table, "showdown");
   }
 
   function summarizeWinnersForLog(winnerIds, contenderMap) {
@@ -1475,6 +1839,7 @@ export function createGame() {
   }
 
   function finishHand(table, winnerIds) {
+    rememberAiNativeHandMemory(table);
     if (table.handNumber === table.totalHands) {
       table.finalHandWinnerIds = winnerIds.slice();
     }
@@ -1531,6 +1896,15 @@ export function createGame() {
           notify(msg("noRoomCarryReward", { reward: itemName(rewardId) }));
         }
       }
+      if (table.tableDef.winHeatRelief) {
+        run.heat = Math.max(0, run.heat - table.tableDef.winHeatRelief);
+        pushRunLog(
+          run,
+          currentLanguage() === "zh"
+            ? `${tableName(table.tableDef)} 盈利收桌，房间风声降低 ${table.tableDef.winHeatRelief}。`
+            : `${tableName(table.tableDef)} cooled Heat by ${table.tableDef.winHeatRelief} after a profitable close.`,
+        );
+      }
     }
 
     if (table.collateral && !collateralReturned) {
@@ -1551,6 +1925,34 @@ export function createGame() {
       lastHandSummary: table.lastHandSummary,
     };
     run.roomResults = [...(run.roomResults ?? []), run.lastTableResult];
+    state.persistent.roomHistory = [run.lastTableResult, ...(state.persistent.roomHistory ?? [])].slice(0, 24);
+    const nextKnownOpponents = { ...(state.persistent.knownOpponents ?? {}) };
+    const playedHands = Math.max(1, Math.min(table.handNumber, table.totalHands));
+    table.players
+      .filter((entry) => entry.id !== "player")
+      .forEach((entry) => {
+        const opponentId = entry.id;
+        const previous = nextKnownOpponents[opponentId] ?? {};
+        const opponent = getOpponentDef(opponentId);
+        const handsSeen = (previous.handsSeen ?? 0) + playedHands;
+        nextKnownOpponents[opponentId] = {
+          ...previous,
+          seen: (previous.seen ?? 0) + 1,
+          handsSeen,
+          lastAction: entry.lastAction ?? null,
+          playerBluffWins: (previous.playerBluffWins ?? 0) + (table.playerPattern.bluffWins ?? 0),
+          playerAggressiveActions:
+            (previous.playerAggressiveActions ?? 0) + (table.playerPattern.aggressiveActions ?? 0),
+          playerFoldCount: (previous.playerFoldCount ?? 0) + (table.playerPattern.foldCount ?? 0),
+          tableId: table.tableDef.id,
+          archetype: previous.archetype ?? opponent?.archetype ?? null,
+          archetypeKnown:
+            Boolean(previous.archetypeKnown) ||
+            handsSeen >= ARCHETYPE_AUTO_REVEAL_HANDS,
+        };
+      });
+    state.persistent.knownOpponents = nextKnownOpponents;
+    savePersistent();
 
     pushRunLog(run, msg("tableEndedLog", { table: tableName(table.tableDef), result: net >= 0 ? `+${net}` : `-${Math.abs(net)}` }));
     if (rewardId && rewardAdded) {
@@ -1596,7 +1998,7 @@ export function createGame() {
       stashUsed: false,
       heatReduced: false,
     };
-    run.shopStock = getShopStock(run.searchIndex);
+    run.shopStock = applyAdaptiveShopStock(getShopStock(run.searchIndex, run.tavernSceneId));
     if (
       run.fixedRouteReservation &&
       run.searchIndex > run.fixedRouteReservation.expiresAfterSearch
@@ -1607,8 +2009,11 @@ export function createGame() {
   }
 
   function createRun(bankroll) {
+    const randomSeed = Date.now() % 2147483647;
+    const tavernSceneId = TAVERN_SCENE_ORDER[randomSeed % TAVERN_SCENE_ORDER.length] ?? TAVERN_SCENE_ORDER[0];
     const run = {
       bankroll,
+      tavernSceneId,
       searchIndex: 1,
       floorEntered: false,
       cashOnHand: bankroll,
@@ -1625,8 +2030,15 @@ export function createGame() {
         publicExit: false,
         fixedWhisper: false,
         emergency: false,
+        serviceStairs: false,
+        riverLaunch: false,
       },
-      fixedRouteOffer: FIXED_ROUTE_POOL[0],
+      specialRouteCosts: {},
+      pressureFlags: {
+        tailedWarned: false,
+        crackdownWarned: false,
+      },
+      fixedRouteOffer: getFixedRoutePool(tavernSceneId)[0],
       fixedRouteReservation: null,
       lastTableResult: null,
       roomResults: [],
@@ -1640,13 +2052,60 @@ export function createGame() {
           },
         ]),
       ),
-      shopStock: getShopStock(1),
+      shopStock: applyAdaptiveShopStock(getShopStock(1, tavernSceneId)),
       currentTable: null,
       log: [],
       inventoryCounter: 0,
-      randomSeed: Date.now() % 2147483647,
+      randomSeed,
+      forcedExtractionPending: false,
+      forcedExtractionReason: null,
     };
+    run.directorRead = buildDirectorRead();
+    if (run.directorRead.style !== "unknown") {
+      pushRunLog(
+        run,
+        currentLanguage() === "zh"
+          ? `牌局经理记住了你的风格：${run.directorRead.label}。`
+          : `The floor remembers your style: ${run.directorRead.label}.`,
+      );
+    }
     return run;
+  }
+
+  function applyAdaptiveShopStock(baseStock) {
+    const read = buildDirectorRead();
+    const stock = [...baseStock];
+    const biasItems =
+      read.style === "bluffer"
+        ? ["player-notes", "signal-lighter"]
+        : read.style === "reckless"
+          ? ["steadying-drink", "false-bottom-wallet"]
+          : read.style === "tight"
+            ? ["marked-lens", "sleeve-clip"]
+            : [];
+    return [...biasItems, ...stock.filter((itemId) => !biasItems.includes(itemId))].slice(0, Math.max(stock.length, 4));
+  }
+
+  function buildDirectorRead() {
+    const records = Object.values(state.persistent.knownOpponents ?? {});
+    const totals = records.reduce(
+      (sum, record) => ({
+        bluffWins: sum.bluffWins + (record.playerBluffWins ?? 0),
+        aggression: sum.aggression + (record.playerAggressiveActions ?? 0),
+        folds: sum.folds + (record.playerFoldCount ?? 0),
+      }),
+      { bluffWins: 0, aggression: 0, folds: 0 },
+    );
+    if (totals.bluffWins >= 2) {
+      return { style: "bluffer", label: currentLanguage() === "zh" ? "爱诈唬" : "Bluff-heavy" };
+    }
+    if (totals.aggression >= 8) {
+      return { style: "reckless", label: currentLanguage() === "zh" ? "压迫型" : "Pressure-heavy" };
+    }
+    if (totals.folds >= 5 && totals.folds > totals.aggression) {
+      return { style: "tight", label: currentLanguage() === "zh" ? "谨慎型" : "Careful" };
+    }
+    return { style: "unknown", label: currentLanguage() === "zh" ? "未定型" : "Unsettled" };
   }
 
   function enterFloor() {
@@ -1655,6 +2114,7 @@ export function createGame() {
       return;
     }
     run.floorEntered = true;
+    run.routeIntel.publicExit = true;
   }
 
   function ensureRouteIntel(run) {
@@ -1662,6 +2122,8 @@ export function createGame() {
       publicExit: Boolean(run.routeIntel?.publicExit),
       fixedWhisper: Boolean(run.routeIntel?.fixedWhisper),
       emergency: Boolean(run.routeIntel?.emergency),
+      serviceStairs: Boolean(run.routeIntel?.serviceStairs),
+      riverLaunch: Boolean(run.routeIntel?.riverLaunch),
     };
     return run.routeIntel;
   }
@@ -1700,6 +2162,44 @@ export function createGame() {
       );
   }
 
+  function syncPressureWarnings(run) {
+    if (!run.floorEntered) {
+      return;
+    }
+    run.pressureFlags = {
+      tailedWarned: Boolean(run.pressureFlags?.tailedWarned),
+      crackdownWarned: Boolean(run.pressureFlags?.crackdownWarned),
+    };
+    if (run.heat >= 4 && !run.pressureFlags.tailedWarned) {
+      pushRunLog(
+        run,
+        currentLanguage() === "zh"
+          ? "门口开始记住你的脸了，路线准备会越来越重要。"
+          : "The floor is starting to remember your face. Prepared exits matter now.",
+      );
+      notify(
+        currentLanguage() === "zh"
+          ? "风声开始追着你走。"
+          : "Heat is starting to follow you.",
+      );
+      run.pressureFlags.tailedWarned = true;
+    }
+    if (run.heat >= 5 && !run.pressureFlags.crackdownWarned) {
+      pushRunLog(
+        run,
+        currentLanguage() === "zh"
+          ? "正门已经不再安全，只剩准备好的线还能碰。"
+          : "The front exit is no longer safe. Only prepared lines remain.",
+      );
+      notify(
+        currentLanguage() === "zh"
+          ? "正门封死了，只能走准备好的线。"
+          : "Front exit compromised. Only prepared lines remain.",
+      );
+      run.pressureFlags.crackdownWarned = true;
+    }
+  }
+
   function createTableState(run, tableDef, collateral) {
     const players = [
       {
@@ -1712,6 +2212,11 @@ export function createGame() {
         handContribution: 0,
         folded: false,
         lastAction: null,
+        banter: null,
+        tell: null,
+        tensionLevel: 0,
+        aiStatus: null,
+        aiNative: null,
       },
       ...tableDef.opponentIds.map((opponentId, index) => ({
         id: opponentId,
@@ -1724,6 +2229,11 @@ export function createGame() {
         handContribution: 0,
         folded: false,
         lastAction: null,
+        banter: null,
+        tell: null,
+        tensionLevel: 0,
+        aiStatus: null,
+        aiNative: null,
       })),
     ];
 
@@ -1760,6 +2270,12 @@ export function createGame() {
       stageCue: null,
       playerPattern: {
         raiseCount: 0,
+        foldCount: 0,
+        callCount: 0,
+        checkCount: 0,
+        allInCount: 0,
+        aggressiveActions: 0,
+        bluffWins: 0,
       },
       finalHandWinnerIds: [],
       lastHandSummary: null,
@@ -1795,6 +2311,11 @@ export function createGame() {
       player.handContribution = 0;
       player.holeCards = [];
       player.lastAction = null;
+      player.banter = null;
+      player.tell = null;
+      player.tensionLevel = 0;
+      player.aiStatus = null;
+      player.aiNative = null;
     });
 
     const deck = shuffleDeck(createDeck(), table.random);
@@ -1861,6 +2382,8 @@ export function createGame() {
         big: getBigBlindAmount(table),
       }),
     );
+    prefetchTableResponses(table);
+    refreshOpponentBanter(table, "hand-start");
   }
 
   function buildLegalActionMap(table) {
@@ -2041,11 +2564,12 @@ export function createGame() {
   }
 
   function rotateFixedRoute(currentRoute) {
-    const currentIndex = FIXED_ROUTE_POOL.findIndex((route) => route.id === currentRoute?.id);
+    const routePool = getRunFixedRoutePool();
+    const currentIndex = routePool.findIndex((route) => route.id === currentRoute?.id);
     if (currentIndex === -1) {
-      return FIXED_ROUTE_POOL[0];
+      return routePool[0];
     }
-    return FIXED_ROUTE_POOL[(currentIndex + 1) % FIXED_ROUTE_POOL.length];
+    return routePool[(currentIndex + 1) % routePool.length];
   }
 
   function awardItem(run, itemId) {
@@ -2071,7 +2595,7 @@ export function createGame() {
   }
 
   function takeCollateral(run, instanceId, tableId) {
-    if (tableId !== "mirror-hall") {
+    if (!getTableDef(tableId)?.allowCollateral) {
       return null;
     }
     const item = run.inventory.find((entry) => entry.id === instanceId);
@@ -2102,21 +2626,26 @@ export function createGame() {
       }
       return table.players[0].stack >= 170 ? "sealed-bond" : "gold-cased-watch";
     }
+    if (table.tableDef.id === "ledger-cellar") {
+      return table.players[0].stack >= 130 ? "pearl-necklace" : "emerald-brooch";
+    }
+    if (table.tableDef.id === "embers-table") {
+      return table.players[0].stack >= 220 ? "vault-promissory" : "obsidian-idol";
+    }
     return null;
   }
 
   function canUseGeneralExtraction(run) {
+    const scene = getRunSceneDef(run);
     if (!run.routeIntel?.publicExit) {
       return false;
     }
     if (run.heat >= 6) {
       return false;
     }
-    let fee = 30 + Math.floor(run.cashOnHand * 0.15);
-    if (run.heat === 5) {
-      fee += 60;
-    }
-    return run.cashOnHand >= fee;
+    const fee = (scene?.generalExtractionFlatFee ?? 30) + Math.floor(run.cashOnHand * (scene?.generalExtractionRate ?? 0.15));
+    const totalFee = fee + (run.heat === 5 ? scene?.lockdownSurcharge ?? 60 : 0);
+    return run.cashOnHand >= totalFee;
   }
 
   function canUseFixedExtraction(run) {
@@ -2148,11 +2677,104 @@ export function createGame() {
     return run.inventory.some((item) => getItemDef(item.itemId).kind === "valuable");
   }
 
+  function enforceHeatPressure(run) {
+    if (state.mode !== "search" || !run.floorEntered || run.heat < 6) {
+      return;
+    }
+    const serviceRoute = getRunSpecialRoute("service-stairs", run);
+    const riverRoute = getRunSpecialRoute("river-launch", run);
+    const plans = [];
+    if (
+      run.routeIntel?.serviceStairs &&
+      run.heat <= serviceRoute.maxHeat &&
+      run.cashOnHand >= serviceRoute.finalCost
+    ) {
+      plans.push({
+        type: "service-stairs",
+        total: Math.max(0, run.cashOnHand - serviceRoute.finalCost),
+      });
+    }
+    if (
+      run.routeIntel?.riverLaunch &&
+      run.heat <= riverRoute.maxHeat &&
+      run.cashOnHand >= riverRoute.finalCost
+    ) {
+      plans.push({
+        type: "river-launch",
+        total: Math.max(0, run.cashOnHand - riverRoute.finalCost),
+      });
+    }
+    if (canUseFixedExtraction(run)) {
+      plans.push({ type: "fixed", total: Math.max(0, run.cashOnHand - run.fixedRouteReservation.finalCost) });
+    }
+    if (canUseDropBag(run, "cash")) {
+      plans.push({ type: "dropbag-cash", total: Math.max(0, run.cashOnHand - Math.floor(run.cashOnHand * 0.4) - 10) });
+    }
+    if (canUseDropBag(run, "valuables")) {
+      plans.push({ type: "dropbag-valuables", total: Math.max(0, run.cashOnHand - 10) });
+    }
+    if (canUseGeneralExtraction(run)) {
+      const scene = getRunSceneDef(run);
+      const fee =
+        (scene?.generalExtractionFlatFee ?? 30) +
+        Math.floor(run.cashOnHand * (scene?.generalExtractionRate ?? 0.15)) +
+        (run.heat === 5 ? scene?.lockdownSurcharge ?? 60 : 0);
+      plans.push({ type: "general", total: Math.max(0, run.cashOnHand - fee) });
+    }
+    if (!plans.length) {
+      maybeFailRun(
+        currentLanguage() === "zh"
+          ? "风声炸穿了整层楼，你没来得及撤离。"
+          : "Heat blew the floor wide open before you could get out.",
+      );
+      return;
+    }
+    plans.sort((left, right) => right.total - left.total);
+    run.forcedExtractionPending = true;
+    run.forcedExtractionReason = "lockdown";
+    notify(currentLanguage() === "zh" ? "风声封楼，正在强制撤离。" : "Lockdown heat. Forced extraction triggered.");
+    attemptExtraction(plans[0].type);
+  }
+
   function getNextCommunityPreview(table) {
     if (table.street === "river") {
       return null;
     }
     return table.deck[0] ?? null;
+  }
+
+  function applyTableToolHeat(run, table, itemDef) {
+    const bonus = table.tableDef.tableToolHeatBonus ?? 0;
+    const totalHeat = (itemDef.heat ?? 0) + bonus;
+    if (totalHeat <= 0) {
+      return;
+    }
+    run.heat = Math.min(6, run.heat + totalHeat);
+  }
+
+  function drawNextCommunityCard(table) {
+    if (!table.peekCard) {
+      return drawCard(table.deck);
+    }
+    const preview = table.peekCard;
+    const index = table.deck.findIndex((card) => card === preview);
+    table.peekCard = null;
+    if (index === -1) {
+      return drawCard(table.deck);
+    }
+    return table.deck.splice(index, 1)[0];
+  }
+
+  function drawTableReplacementCard(table) {
+    if (!table.peekCard) {
+      return drawCard(table.deck);
+    }
+    const reservedIndex = table.deck.findIndex((card) => card === table.peekCard);
+    if (reservedIndex === -1 || table.deck.length <= 1) {
+      return drawCard(table.deck);
+    }
+    const replacementIndex = reservedIndex === 0 ? 1 : 0;
+    return table.deck.splice(replacementIndex, 1)[0];
   }
 
   function nextRandom(run) {
@@ -2171,6 +2793,7 @@ export function createGame() {
     startRun,
     resetProgress,
     projectStashNet: (amount) => projectStashNet(amount),
+    getState: () => state,
     getMode: () => state.mode,
     getHeatBand,
   };
@@ -2181,6 +2804,20 @@ function buildDefaultPersistentState(language = getPreferredLanguage()) {
     vault: STARTING_VAULT,
     runCount: 0,
     winCount: 0,
+    totalSpent: 0,
+    careerCash: STARTING_VAULT,
+    arrestCount: 0,
+    forcedExitCount: 0,
+    caughtRunCount: 0,
+    seizedCashTotal: 0,
+    seizedValuableTotal: 0,
+    lastRunHeat: 0,
+    itemLedger: {},
+    securedItems: [],
+    history: [],
+    roomHistory: [],
+    knownOpponents: {},
+    sceneLedger: {},
     language: normalizeLanguage(language ?? getPreferredLanguage()),
     schemaVersion: PERSISTENT_SCHEMA_VERSION,
   };
@@ -2208,6 +2845,17 @@ function loadSavedRunSnapshot() {
       mode: parsed.mode === "table" ? "table" : "search",
       run: {
         ...parsed.run,
+        tavernSceneId: parsed.run?.tavernSceneId ?? TAVERN_SCENE_ORDER[0],
+        fixedRouteOffer:
+          parsed.run?.fixedRouteOffer ??
+          getFixedRoutePool(parsed.run?.tavernSceneId ?? TAVERN_SCENE_ORDER[0])[0],
+        shopStock:
+          parsed.run?.shopStock ??
+          getShopStock(parsed.run?.searchIndex ?? 1, parsed.run?.tavernSceneId ?? TAVERN_SCENE_ORDER[0]),
+        pressureFlags: {
+          tailedWarned: Boolean(parsed.run?.pressureFlags?.tailedWarned),
+          crackdownWarned: Boolean(parsed.run?.pressureFlags?.crackdownWarned),
+        },
         routeIntel: {
           publicExit:
             parsed.run?.routeIntel?.publicExit ??
@@ -2238,6 +2886,11 @@ function loadSavedRunSnapshot() {
                   parsed.run?.lastTableResult ||
                   (parsed.run?.inventory ?? []).some((item) => ITEM_DEFS[item.itemId]?.kind === "valuable")),
             ),
+          serviceStairs: Boolean(parsed.run?.routeIntel?.serviceStairs),
+          riverLaunch: Boolean(parsed.run?.routeIntel?.riverLaunch),
+        },
+        specialRouteCosts: {
+          ...(parsed.run?.specialRouteCosts ?? {}),
         },
         floorEntered,
       },
@@ -2291,6 +2944,36 @@ function loadPersistentState() {
       vault: parsed.vault ?? STARTING_VAULT,
       runCount: parsed.runCount ?? 0,
       winCount: parsed.winCount ?? 0,
+      totalSpent: parsed.totalSpent ?? 0,
+      careerCash: parsed.careerCash ?? parsed.vault ?? STARTING_VAULT,
+      arrestCount: parsed.arrestCount ?? 0,
+      forcedExitCount: parsed.forcedExitCount ?? 0,
+      caughtRunCount: parsed.caughtRunCount ?? 0,
+      seizedCashTotal: parsed.seizedCashTotal ?? 0,
+      seizedValuableTotal: parsed.seizedValuableTotal ?? 0,
+      lastRunHeat: parsed.lastRunHeat ?? 0,
+      itemLedger: parsed.itemLedger ?? {},
+      securedItems: parsed.securedItems ?? [],
+      history: parsed.history ?? [],
+      roomHistory: parsed.roomHistory ?? [],
+      knownOpponents: Object.fromEntries(
+        Object.entries(parsed.knownOpponents ?? {}).map(([opponentId, info]) => [
+          opponentId,
+          {
+            ...info,
+            handsSeen: info?.handsSeen ?? 0,
+            playerBluffWins: info?.playerBluffWins ?? 0,
+            playerAggressiveActions: info?.playerAggressiveActions ?? 0,
+            playerFoldCount: info?.playerFoldCount ?? 0,
+            sessionNotes: Array.isArray(info?.sessionNotes) ? info.sessionNotes.slice(0, 10) : [],
+            memorySummary: info?.memorySummary ?? "",
+            reputationTowardPlayer: info?.reputationTowardPlayer ?? 0,
+            archetypeKnown: Boolean(info?.archetypeKnown),
+            archetype: info?.archetype ?? getOpponentDef(opponentId)?.archetype ?? null,
+          },
+        ]),
+      ),
+      sceneLedger: parsed.sceneLedger ?? {},
       language: normalizeLanguage(parsed.language ?? getPreferredLanguage()),
       schemaVersion: PERSISTENT_SCHEMA_VERSION,
     };
@@ -2302,4 +2985,12 @@ function loadPersistentState() {
 
 function inventorySlotsUsed(inventory) {
   return inventory.reduce((sum, item) => sum + getItemDef(item.itemId).slots, 0);
+}
+
+function rememberPersistentPurchaseState(persistent, itemId, spent) {
+  persistent.totalSpent = (persistent.totalSpent ?? 0) + spent;
+  persistent.itemLedger = {
+    ...(persistent.itemLedger ?? {}),
+    [itemId]: ((persistent.itemLedger ?? {})[itemId] ?? 0) + 1,
+  };
 }

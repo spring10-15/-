@@ -28,12 +28,6 @@ export function renderPokerScene(state, helpers) {
             .map((participant) => renderTableSeatTag(table, participant, helpers))
             .join("")}
         </div>
-        <aside class="table-inline-log-card" aria-live="polite">
-          <p class="eyebrow">${t("Hand Log")}</p>
-          <div class="table-inline-log-stack">
-            ${tableLog.length ? tableLog.map((entry) => `<p class="micro">${entry}</p>`).join("") : `<p class="micro">${t("The felt is still quiet.")}</p>`}
-          </div>
-        </aside>
 
         <div class="table-felt-focus">
           <div class="board-felt-shell ${table.street} ${table.handNumber === table.totalHands ? "final-hand" : ""}">
@@ -71,6 +65,12 @@ export function renderPokerScene(state, helpers) {
         </div>
         ${renderTableActionBar(run, table, usableItems, helpers)}
       </section>
+      <aside class="table-inline-log-card" aria-live="polite">
+        <p class="eyebrow">${t("Hand Log")}</p>
+        <div class="table-inline-log-stack">
+          ${tableLog.length ? tableLog.map((entry) => `<p class="micro">${entry}</p>`).join("") : `<p class="micro">${t("The felt is still quiet.")}</p>`}
+        </div>
+      </aside>
       ${renderTableSidebar(run, table, usableItems, stakesPreview, helpers)}
     </div>
   `;
@@ -80,6 +80,13 @@ export function renderTableSeatTag(table, participant, helpers) {
   const isActive = table.currentActorId === participant.id;
   const seatClass =
     participant.seatIndex === 1 ? "left-front" : participant.seatIndex === 2 ? "right-front" : "";
+  const archetypeLabel = helpers.getKnownOpponentArchetypeLabel(participant);
+  const tensionClass =
+    (participant.tensionLevel ?? 0) >= 72
+      ? "tense"
+      : (participant.tensionLevel ?? 0) >= 45
+        ? "testing"
+        : "calm";
   const lastAction =
     participant.lastAction === "all-in"
       ? helpers.t("All-in")
@@ -90,10 +97,13 @@ export function renderTableSeatTag(table, participant, helpers) {
           : helpers.t("Waiting");
   const seatRole = describeSeatRole(table, participant, helpers);
   return `
-    <button class="table-seat-tag ${seatClass} ${isActive ? "active" : ""} ${participant.folded ? "folded" : ""}" data-select-opponent="${participant.id}">
+    <button class="table-seat-tag ${seatClass} ${tensionClass} ${isActive ? "active" : ""} ${participant.folded ? "folded" : ""}" data-select-opponent="${participant.id}">
       <strong>${helpers.participantName(participant)}</strong>
+      ${archetypeLabel ? `<span class="micro">${archetypeLabel}</span>` : ""}
       <span class="micro">${helpers.t("Stack")} ${helpers.money(participant.stack)}</span>
-      <span class="micro">${seatRole ? `${seatRole} / ${lastAction}` : lastAction}</span>
+      <span class="micro">${participant.aiStatus ? `${participant.aiStatus} / ` : ""}${seatRole ? `${seatRole} / ${lastAction}` : lastAction}</span>
+      ${participant.tell ? `<span class="micro tell">${participant.tell}</span>` : ""}
+      ${participant.banter ? `<span class="opponent-banter">${participant.banter}</span>` : ""}
     </button>
   `;
 }
@@ -243,6 +253,29 @@ export function getAvailableTableItemActions(table, usableItems, helpers) {
       continue;
     }
 
+    if (item.itemId === "player-notes") {
+      table.players
+        .filter(
+          (participant) =>
+            participant.id !== "player" &&
+            !participant.folded &&
+            !helpers.getKnownOpponentArchetypeLabel(participant),
+        )
+        .forEach((participant) => {
+          actions.push({
+            key: `${item.id}-${participant.id}`,
+            label: `${def.name} / ${helpers.participantName(participant)}`,
+            detail: def.description,
+            buttonLabel:
+              helpers.currentLanguage() === "zh"
+                ? `记录 ${helpers.participantName(participant)}`
+                : `Log ${helpers.participantName(participant)}`,
+            payload: { action: "use-table-item", instanceId: item.id, targetId: participant.id },
+          });
+        });
+      continue;
+    }
+
     if (item.itemId === "sleeve-clip") {
       if (!table.itemUsage.sleeveClip && table.street === "preflop" && table.turnCounter === 0 && table.currentActorId === "player") {
         actions.push({
@@ -275,6 +308,23 @@ function describeTableItemState(table, item, helpers) {
       return { ready: false, text: zh ? "本桌已使用" : "Used at this table" };
     }
     return { ready: true, text: zh ? "可读取 1 名对手当前牌压" : "Ready to read one opponent" };
+  }
+  if (item.itemId === "player-notes") {
+    return table.players.some(
+      (participant) =>
+        participant.id !== "player" &&
+        !participant.folded &&
+        !helpers.getKnownOpponentArchetypeLabel(participant),
+    )
+      ? {
+          ready: true,
+          text:
+            zh ? "可记录 1 名对手的风格标签" : "Ready to log one opponent archetype",
+        }
+      : {
+          ready: false,
+          text: zh ? "当前没有新的标签可记录" : "No new archetype to log right now",
+        };
   }
   if (item.itemId === "sleeve-clip") {
     if (table.itemUsage.sleeveClip) {

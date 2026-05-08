@@ -31,7 +31,9 @@ export function renderTavernScene(state, helpers) {
     extractionPreview.general.visible ||
       extractionPreview.fixed.visible ||
       extractionPreview.dropbagCash.visible ||
-      extractionPreview.dropbagValuables.visible,
+      extractionPreview.dropbagValuables.visible ||
+      extractionPreview.serviceStairs.visible ||
+      extractionPreview.riverLaunch.visible,
   );
 
   return `
@@ -86,12 +88,12 @@ export function renderTavernScene(state, helpers) {
           })}
         </div>
       </section>
-      ${activeSearchModal ? renderSearchModal(run, activeSearchModal, extractionPreview, searchItems, routeOffer, helpers) : ""}
+      ${activeSearchModal ? renderSearchModal(run, state.persistent, activeSearchModal, extractionPreview, searchItems, routeOffer, helpers) : ""}
     </div>
   `;
 }
 
-function renderSearchModal(run, modal, extractionPreview, searchItems, routeOffer, helpers) {
+function renderSearchModal(run, persistent, modal, extractionPreview, searchItems, routeOffer, helpers) {
   const { t } = helpers;
   if (modal === "none") {
     return "";
@@ -110,13 +112,24 @@ function renderSearchModal(run, modal, extractionPreview, searchItems, routeOffe
     <div class="scene-modal-layer tavern-modal-layer tavern-${modal}-layer">
       <button class="scene-modal-backdrop" data-close-search-modal aria-label="${t("Close")}"></button>
       <section class="scene-modal panel ${modal}-modal tavern-${modal}-modal">
-        <div class="scene-modal-head ${modal === "routes" ? "routes-head" : ""}">
-          <div>
-            <p class="eyebrow">${modalEyebrow}</p>
-            <h2>${modalTitle}</h2>
-          </div>
-          <button class="ghost close-modal-button" data-close-search-modal>${t("Close")}</button>
-        </div>
+        ${
+          modal === "services"
+            ? `<button class="ghost close-modal-button tavern-top-close" data-close-search-modal>${t("Close")}</button>`
+            : ""
+        }
+        ${
+          modal === "services"
+            ? ``
+            : `
+              <div class="scene-modal-head ${modal === "routes" ? "routes-head" : ""}">
+                <div>
+                  <p class="eyebrow">${modalEyebrow}</p>
+                  <h2>${modalTitle}</h2>
+                </div>
+                <button class="ghost close-modal-button" data-close-search-modal>${t("Close")}</button>
+              </div>
+            `
+        }
         <div class="scene-modal-body">
           ${
             modal === "play"
@@ -125,7 +138,7 @@ function renderSearchModal(run, modal, extractionPreview, searchItems, routeOffe
                 ? renderStashServicesModal(run, extractionPreview, searchItems, helpers, { mode: "floor" })
                 : modal === "routes"
                   ? renderExtractionRoutesModal(run, extractionPreview, null, helpers)
-                  : renderStashFolderModal(run, extractionPreview, helpers)
+                  : renderStashFolderModal(run, extractionPreview, helpers, persistent)
           }
         </div>
       </section>
@@ -166,13 +179,13 @@ export function renderPlayableDestinationCard(run, tableId, helpers) {
       <h3>${table.name}</h3>
       <div class="compact-chip-grid">
         ${helpers.renderCompactStatChip(t("Buy-in"), money(table.buyIn), "warm")}
-        ${helpers.renderCompactStatChip(t("Heat"), `+${table.heatGain}`, table.risk === "Low" ? "cool" : "warn")}
+        ${helpers.renderCompactStatChip(t("Heat"), `+${table.heatGain}`, table.rawRisk === "Low" ? "cool" : "warn")}
         ${helpers.renderCompactStatChip(t("Intel"), `${knownIntel}/3`, knownIntel ? "good" : "neutral")}
         ${helpers.renderCompactStatChip(t("Status"), insufficientCash ? t("Not enough cash") : t("Open"), insufficientCash ? "bad" : "good")}
       </div>
       <p class="micro">${knownIntel ? buildDestinationIntelSummary(table, intel) : table.role}</p>
       ${
-        tableId === "mirror-hall"
+        table.allowCollateral
           ? `
             <label class="micro" for="collateral-${tableId}">${t("Collateral")}</label>
             <select id="collateral-${tableId}" ${insufficientCash || !valuables.length ? "disabled" : ""}>

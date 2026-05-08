@@ -14,7 +14,7 @@
   overflow: hidden;
   border: 0;
   border-radius: 0;
-  background: url("../../assets/scene-plates/menu-title-bg.png?v=20260402c") center center / cover no-repeat;
+  background: transparent;
   box-shadow: none;
   animation: none;
 }

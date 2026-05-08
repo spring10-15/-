@@ -22,7 +22,7 @@ export function renderExtractionRoutesModal(run, preview, extractionCommit, help
 }
 
 export function renderSummaryScene(state, helpers) {
-  const { t, renderOutsiderFrame, currentLanguage, money } = helpers;
+  const { t, currentLanguage, money } = helpers;
   const summary = state.latestSummary;
   if (!summary) {
     return helpers.renderMenu(state);
@@ -46,7 +46,6 @@ export function renderSummaryScene(state, helpers) {
     : summary.reason;
   return `
     <div class="scene-shell summary-shell fixed-scene-shell result-scene-shell">
-      ${renderOutsiderFrame("summary")}
       <section class="summary-main-shell ${summary.success ? "success" : "failure"}">
         <div class="summary-main-head">
           <div>
@@ -90,10 +89,10 @@ export function renderSummaryScene(state, helpers) {
           <p><span class="eyebrow">${summary.success ? t("Settled Goods") : t("Lost Carry")}</span> ${goodsLine}</p>
           <p><span class="eyebrow">${summary.success ? t("Payout Costs") : t("Collapse")}</span> ${costLine}</p>
         </div>
-      </section>
-      <section class="scene-action-dock summary-action-dock">
-        <button class="scene-action-button primary" data-action="start-run">${t("Run It Again")}</button>
-        <button class="scene-action-button" data-action="return-to-menu">${t("Back to Menu")}</button>
+        <div class="scene-action-dock summary-action-dock">
+          <button class="scene-action-button primary" data-action="start-run">${t("Run It Again")}</button>
+          <button class="scene-action-button" data-action="return-to-menu">${t("Back to Menu")}</button>
+        </div>
       </section>
     </div>
   `;
@@ -166,23 +165,29 @@ export function renderCompactRouteOption(plan, helpers) {
     fixed: "extract-fixed",
     "dropbag-cash": "extract-dropbag-cash",
     "dropbag-valuables": "extract-dropbag-valuables",
+    "service-stairs": "extract-service-stairs",
+    "river-launch": "extract-river-launch",
   };
   const titleMap = {
     general: t("Taxed Walkout"),
     fixed: t("Runner Hand-Off"),
     "dropbag-cash": currentLanguage() === "zh" ? "紧急撤离 / 现金" : "Break Glass Exit / Cash",
     "dropbag-valuables": currentLanguage() === "zh" ? "紧急撤离 / 丢货" : "Break Glass Exit / Goods",
+    "service-stairs": plan.label,
+    "river-launch": plan.label,
   };
   const routeClass = {
     general: 'route-general',
     fixed: 'route-fixed',
     'dropbag-cash': 'route-dropbag-cash',
     'dropbag-valuables': 'route-dropbag-valuables',
+    'service-stairs': 'route-fixed',
+    'river-launch': 'route-fixed',
   }[plan.key];
 
   return `
     <div class="drawer-card route-compact-card ${routeClass} ${plan.available ? "" : "locked"}">
-      <p class="eyebrow">${plan.key === "fixed" ? t("Prepared Line") : plan.key.startsWith("dropbag") ? t("Emergency Choice") : t("Front Of House")}</p>
+      <p class="eyebrow">${plan.key === "fixed" || plan.key === "service-stairs" || plan.key === "river-launch" ? t("Prepared Line") : plan.key.startsWith("dropbag") ? t("Emergency Choice") : t("Front Of House")}</p>
       <h3>${titleMap[plan.key]}</h3>
       <div class="compact-chip-grid">
         ${helpers.renderCompactStatChip(t("Cost"), summarizeRouteCost(plan, helpers), plan.key.startsWith("dropbag") ? "bad" : "warn")}
@@ -208,6 +213,9 @@ export function summarizeRouteCost(plan, helpers) {
   if (plan.key === "dropbag-valuables") {
     return currentLanguage() === "zh" ? `丢货 ${money(plan.droppedValue ?? 0)}` : `Dump ${money(plan.droppedValue ?? 0)}`;
   }
+  if (plan.key === "service-stairs" || plan.key === "river-launch") {
+    return money(plan.fee ?? 0);
+  }
   return money(0);
 }
 
@@ -218,6 +226,12 @@ export function getVisibleRouteCards(run, preview) {
   }
   if (preview.fixed.visible) {
     cards.push(preview.fixed);
+  }
+  if (preview.serviceStairs?.visible) {
+    cards.push(preview.serviceStairs);
+  }
+  if (preview.riverLaunch?.visible) {
+    cards.push(preview.riverLaunch);
   }
   if (preview.dropbagCash.visible) {
     cards.push(preview.dropbagCash);

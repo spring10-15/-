@@ -30,7 +30,6 @@ export function renderStashScene(state, helpers) {
         </div>
         <div class="minimal-scene-stats">
           ${renderCompactStatChip(t("Cash on hand"), money(run.cashOnHand), "warm")}
-          ${renderCompactStatChip(t("Stashed"), money(run.stashedCash), run.stashedCash > 0 ? "cool" : "neutral")}
           ${renderCompactStatChip(t("Heat"), `${run.heat}`, run.heat > 2 ? "warn" : "cool")}
           ${renderCompactStatChip(t("Action points"), `${run.actionPoints}/2`, run.actionPoints > 0 ? "good" : "bad")}
         </div>
@@ -62,12 +61,12 @@ export function renderStashScene(state, helpers) {
           })}
         </div>
       </section>
-      ${activeSearchModal ? renderStashSceneModal(run, activeSearchModal, extractionPreview, searchItems, helpers) : ""}
+      ${activeSearchModal ? renderStashSceneModal(state, run, activeSearchModal, extractionPreview, searchItems, helpers) : ""}
     </div>
   `;
 }
 
-function renderStashSceneModal(run, modal, extractionPreview, searchItems, helpers) {
+function renderStashSceneModal(state, run, modal, extractionPreview, searchItems, helpers) {
   const { t } = helpers;
   if (modal !== "services" && modal !== "folder") {
     return "";
@@ -88,7 +87,7 @@ function renderStashSceneModal(run, modal, extractionPreview, searchItems, helpe
           ${
             modal === "services"
               ? renderStashServicesModal(run, extractionPreview, searchItems, helpers, { mode: "stash-only" })
-              : renderStashFolderModal(run, extractionPreview, helpers)
+              : renderStashFolderModal(run, extractionPreview, helpers, state.persistent)
           }
         </div>
       </section>
@@ -118,13 +117,8 @@ export function renderStashServicesModal(run, extractionPreview, searchItems, he
           </div>
           <div class="preview-grid compact-preview">
             ${helpers.renderPreviewCell(t("Cash on hand"), money(run.cashOnHand), "warm")}
-            ${helpers.renderPreviewCell(t("Stashed"), money(run.stashedCash), "cool")}
-            ${helpers.renderPreviewCell(t("Stash net"), money(extractionPreview.stash.net), "good")}
             ${helpers.renderPreviewCell(t("Heat"), `${run.heat}`, run.heat > 2 ? "warn" : "cool")}
-          </div>
-          <div class="field-stack compact-field-stack">
-            <input id="stash-amount" type="number" min="0" max="${run.cashOnHand}" step="10" value="${Math.min(run.cashOnHand, 80)}" />
-            <button class="secondary" data-action="stash-cash" ${run.phase.stashUsed || run.actionPoints <= 0 ? "disabled" : ""}>${t("Stash")}</button>
+            ${helpers.renderPreviewCell(t("Carry"), valuables.length ? `${valuables.length}` : "0", valuables.length ? "warn" : "neutral")}
           </div>
           <div class="button-row station-action-row">
             <button class="secondary" data-action="reduce-heat" ${
@@ -225,76 +219,71 @@ export function renderStashServicesModal(run, extractionPreview, searchItems, he
       </div>
     `;
   }
-  const servicesTab = activeTab("searchServices", "stash");
   return `
     <div class="drawer-stack">
-      ${renderTabBar("searchServices", [
-        { value: "stash", label: t("Stash Cash") },
-        { value: "tools", label: t("Services And Tools") },
-      ])}
-      ${
-        servicesTab === "stash"
-          ? `
-            <div class="drawer-card">
-              <div class="section-heading">
-                <div>
-                  <p class="eyebrow">${t("Ledger Counter")}</p>
-                  <h3>${t("Stash Cash")}</h3>
-                </div>
-              </div>
-              <div class="preview-grid compact-preview">
-                ${helpers.renderPreviewCell(t("Stashed"), money(run.stashedCash), "cool")}
-                ${helpers.renderPreviewCell(t("Stash net"), money(extractionPreview.stash.net), "good")}
-                ${helpers.renderPreviewCell(t("Fee"), money(extractionPreview.stash.fee), "warn")}
-                ${helpers.renderPreviewCell(t("Status"), run.phase.stashUsed ? t("Stash spent") : t("Stash live"), run.phase.stashUsed ? "bad" : "good")}
-              </div>
-              <div class="field-stack compact-field-stack">
-                <input id="stash-amount" type="number" min="0" max="${run.cashOnHand}" step="10" value="${Math.min(run.cashOnHand, 80)}" />
-                <button class="secondary" data-action="stash-cash" ${run.phase.stashUsed || run.actionPoints <= 0 ? "disabled" : ""}>${t("Stash")}</button>
-              </div>
-              <div class="button-row station-action-row">
-                <button class="secondary" data-action="reduce-heat" ${
-                  run.actionPoints <= 0 || run.phase.heatReduced || run.heat <= 0 || run.cashOnHand < 30 ? "disabled" : ""
-                }>${t("Pay 30 to Lower Heat")}</button>
-                <button class="secondary" data-action="sell-all-valuables" ${!valuables.length || run.actionPoints <= 0 ? "disabled" : ""}>${t("Sell All Valuables")}</button>
-              </div>
-            </div>
-          `
-          : `
-            <div class="drawer-card">
-              <div class="section-heading">
-                <div>
-                  <p class="eyebrow">${t("Back Shelf")}</p>
-                  <h3>${t("Services And Tools")}</h3>
-                </div>
-              </div>
-              <div class="table-grid compact-destination-grid">
-                ${run.shopStock.map((itemId) => renderShopCard(run, itemId, helpers)).join("")}
-                ${searchItems.map((item) => renderSearchItemUse(run, item, helpers)).join("")}
-              </div>
-            </div>
-            <div class="drawer-card">
-              <div class="section-heading">
-                <div>
-                  <p class="eyebrow">${t("Coat Trade")}</p>
-                  <h3>${t("Inventory And Notes")}</h3>
-                </div>
-              </div>
-              <div class="inventory-grid">
-                ${run.inventory.length ? run.inventory.map(helpers.renderInventoryCard).join("") : `<div class="item-card"><p class="micro">${t("The pockets are still light.")}</p></div>`}
-              </div>
-            </div>
-          `
-      }
+      <div class="drawer-card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">${t("Ledger Counter")}</p>
+            <h3>${t("Personal Assets")}</h3>
+          </div>
+        </div>
+        <div class="preview-grid compact-preview">
+          ${helpers.renderPreviewCell(t("Cash on hand"), money(run.cashOnHand), "warm")}
+          ${helpers.renderPreviewCell(t("Heat"), `${run.heat}`, run.heat > 2 ? "warn" : "cool")}
+          ${helpers.renderPreviewCell(t("Action points"), `${run.actionPoints}/2`, run.actionPoints > 0 ? "good" : "bad")}
+          ${helpers.renderPreviewCell(t("Carry"), valuables.length ? `${valuables.length}` : "0", valuables.length ? "warn" : "neutral")}
+        </div>
+        <div class="button-row station-action-row">
+          <button class="secondary" data-action="reduce-heat" ${
+            run.actionPoints <= 0 || run.phase.heatReduced || run.heat <= 0 || run.cashOnHand < 30 ? "disabled" : ""
+          }>${t("Pay 30 to Lower Heat")}</button>
+          <button class="secondary" data-action="sell-all-valuables" ${!valuables.length || run.actionPoints <= 0 ? "disabled" : ""}>${t("Sell All Valuables")}</button>
+        </div>
+      </div>
+      <div class="drawer-card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">${t("Back Shelf")}</p>
+            <h3>${t("Services And Tools")}</h3>
+          </div>
+        </div>
+        <div class="table-grid compact-destination-grid">
+          ${run.shopStock.map((itemId) => renderShopCard(run, itemId, helpers)).join("")}
+          ${searchItems.map((item) => renderSearchItemUse(run, item, helpers)).join("")}
+        </div>
+      </div>
+      <div class="drawer-card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">${t("Coat Trade")}</p>
+            <h3>${t("Inventory And Notes")}</h3>
+          </div>
+        </div>
+        <div class="inventory-grid">
+          ${run.inventory.length ? run.inventory.map(helpers.renderInventoryCard).join("") : `<div class="item-card"><p class="micro">${t("The pockets are still light.")}</p></div>`}
+        </div>
+      </div>
     </div>
   `;
 }
 
-export function renderStashFolderModal(run, extractionPreview, helpers) {
-  const { t, getRunValuables, TABLE_ORDER, money, itemCopy } = helpers;
+export function renderStashFolderModal(run, extractionPreview, helpers, persistent = null) {
+  const { t, getRunValuables, TABLE_ORDER, money, itemCopy, opponentCopy } = helpers;
   const valuables = getRunValuables(run);
-  const roomResults = run.roomResults ?? (run.lastTableResult ? [run.lastTableResult] : []);
+  const roomResults = [
+    ...(run.roomResults ?? (run.lastTableResult ? [run.lastTableResult] : [])),
+    ...((persistent?.roomHistory ?? []).filter((entry) => !(run.roomResults ?? []).some((live) => live.tableId === entry.tableId && live.net === entry.net))),
+  ].slice(-8);
   const intelTables = TABLE_ORDER.filter((tableId) => run.intel?.[tableId]?.opponents || run.completedTables.includes(tableId));
+  const usefulItems = run.inventory.filter((item) => {
+    const def = helpers.getItemDef(item.itemId);
+    return def.kind === "usable" || def.unlockRoute;
+  });
+  const persistentHistory = persistent?.history ?? [];
+  const knownOpponents = Object.entries(persistent?.knownOpponents ?? {});
+  const runActions = (run.log ?? []).slice(-8).reverse();
+  const securedItems = (persistent?.securedItems ?? []).slice(0, 6).map((itemId) => itemCopy(itemId).name);
   const inventoryLine = run.inventory.length
     ? run.inventory
         .map((item) => itemCopy(item.itemId).name)
@@ -312,11 +301,20 @@ export function renderStashFolderModal(run, extractionPreview, helpers) {
           <p class="micro">${inventoryLine}</p>
         </div>
         <div class="notebook-section">
+          <p class="eyebrow">${t("Career Ledger")}</p>
+          <h3>${t("Career Ledger")}</h3>
+          <div class="ledger-line"><span>${t("Vault")}</span><strong>${money(persistent?.vault ?? 0)}</strong></div>
+          <div class="ledger-line"><span>${t("Career Cash")}</span><strong>${money(persistent?.careerCash ?? persistent?.vault ?? 0)}</strong></div>
+          <div class="ledger-line"><span>${t("Runs")}</span><strong>${persistent?.runCount ?? 0}</strong></div>
+          <div class="ledger-line"><span>${t("Arrests")}</span><strong>${persistent?.arrestCount ?? 0}</strong></div>
+          <p class="micro">${securedItems.length ? securedItems.join(" / ") : t("No side reward")}</p>
+        </div>
+        <div class="notebook-section">
           <p class="eyebrow">${t("Battle Records")}</p>
           <h3>${t("Battle Records")}</h3>
           <div class="record-ledger">
             ${
-              roomResults.length
+              roomResults.length || runActions.length
                 ? roomResults
                     .slice()
                     .reverse()
@@ -329,6 +327,16 @@ export function renderStashFolderModal(run, extractionPreview, helpers) {
                         </article>
                       `,
                     )
+                    .join("") +
+                  runActions
+                    .map(
+                      (entry) => `
+                        <article class="record-ledger-entry">
+                          <div class="ledger-line"><span>${t("Current Run")}</span><strong>${t("Recorded")}</strong></div>
+                          <p class="micro">${entry}</p>
+                        </article>
+                      `,
+                    )
                     .join("")
                 : `<p class="micro">${t("No tavern record yet.")}</p>`
             }
@@ -337,6 +345,28 @@ export function renderStashFolderModal(run, extractionPreview, helpers) {
       </section>
       <section class="notebook-page right-page">
         <div class="notebook-section">
+          <p class="eyebrow">${t("Useful tools")}</p>
+          <h3>${t("Useful tools")}</h3>
+          <div class="intel-ledger">
+            ${
+              usefulItems.length
+                ? usefulItems
+                    .slice(0, 6)
+                    .map((item) => {
+                      const def = itemCopy(item.itemId);
+                      return `
+                        <article class="record-ledger-entry">
+                          <div class="ledger-line"><span>${def.name}</span><strong>${def.kind === "valuable" ? money(def.value) : t("Tool")}</strong></div>
+                          <p class="micro">${def.description}</p>
+                        </article>
+                      `;
+                    })
+                    .join("")
+                : `<p class="micro">${t("The pockets are still light.")}</p>`
+            }
+          </div>
+        </div>
+        <div class="notebook-section">
           <p class="eyebrow">${t("Opponent Intel")}</p>
           <h3>${t("Opponent Intel")}</h3>
           <div class="intel-ledger">
@@ -344,6 +374,43 @@ export function renderStashFolderModal(run, extractionPreview, helpers) {
               intelTables.length
                 ? intelTables.map((tableId) => renderNotebookIntelEntry(run, tableId, helpers)).join("")
                 : `<p class="micro">${t("No opponent intel yet.")}</p>`
+            }
+          </div>
+        </div>
+        <div class="notebook-section">
+          <p class="eyebrow">${t("Run Trail")}</p>
+          <h3>${t("Run Trail")}</h3>
+          <div class="intel-ledger">
+            ${
+              persistentHistory.length
+                ? persistentHistory
+                    .slice(0, 4)
+                    .map((entry) => `
+                      <article class="record-ledger-entry">
+                        <div class="ledger-line"><span>${entry.success ? t("Extracted") : t("Compromised")}</span><strong>${entry.success ? `+${money(entry.totalSettled ?? 0)}` : `-${money(entry.lostCash ?? 0)}`}</strong></div>
+                        <p class="micro">${entry.routeLabel ?? entry.reason ?? t("No tavern record yet.")}</p>
+                      </article>
+                    `)
+                    .join("")
+                : `<p class="micro">${t("No tavern record yet.")}</p>`
+            }
+            ${
+              knownOpponents.length
+                ? knownOpponents
+                    .slice(0, 4)
+                    .map(([opponentId, info]) => `
+                      <article class="record-ledger-entry">
+                        <div class="ledger-line"><span>${opponentCopy(opponentId)?.name ?? opponentId}</span><strong>${info.seen ?? 0}x</strong></div>
+                        <p class="micro">${
+                          info.archetypeKnown && info.archetype
+                            ? `${t("Read")}: ${t(info.archetype)} / ${t("Seen")} ${info.handsSeen ?? 0}`
+                            : `${t("Seen")} ${info.handsSeen ?? 0} / ${t("No opponent intel yet.")}`
+                        }</p>
+                        <p class="micro">${info.lastAction ? `${t("Last move")} ${t(info.lastAction === "all-in" ? "All-in" : info.lastAction.charAt(0).toUpperCase() + info.lastAction.slice(1))}` : t("No opponent intel yet.")}</p>
+                      </article>
+                    `)
+                    .join("")
+                : ""
             }
           </div>
         </div>

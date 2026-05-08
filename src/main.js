@@ -1,9 +1,11 @@
 import {
-  FIXED_ROUTE_POOL,
   INVENTORY_SLOTS,
   ITEM_DEFS,
   STANDARD_BANKROLL,
   TABLE_ORDER,
+  TAVERN_SCENES,
+  getSpecialExtractionRoute,
+  getTavernSceneDef,
   getHeatBand,
   getItemDef,
   getOpponentDef,
@@ -11,6 +13,7 @@ import {
 } from "./data.js";
 import { cardCode } from "./poker.js";
 import { createGame } from "./game.js";
+import { createVideoBackgroundManager } from "./video_background.js";
 import { renderMenuScene } from "../scenes/menu/index.js";
 import { renderStashScene } from "../scenes/stash/index.js";
 import { renderTavernScene, getVisibleDestinationIds as getVisibleDestinationIdsScene } from "../scenes/tavern/index.js";
@@ -28,6 +31,7 @@ import {
   localizeLayerLabel,
   localizeReadDescriptor,
   localizeReadLabel,
+  localizeRiskLabel,
   localizeStreet,
   normalizeLanguage,
   translateText,
@@ -42,11 +46,19 @@ const SCENE_WIDTH = 360;
 const SCENE_HEIGHT = 225;
 const PIXEL_SCALE = canvas.width / SCENE_WIDTH;
 const SCENE_ART = buildSceneArtMap();
+const VIDEO_BACKGROUNDS = createVideoBackgroundManager({
+  baseUrl: new URL("../assets/videos/", import.meta.url).href,
+  fadeMs: 700,
+});
 const CARD_BACK_SRC = new URL("../assets/cards/back.png", import.meta.url).href;
 const BGM_TRACKS = {
   menu: new URL("../assets/audio/bgm/menu-theme.ogg", import.meta.url).href,
   stash: new URL("../assets/audio/bgm/stash-loop.ogg", import.meta.url).href,
   tavern: new URL("../assets/audio/bgm/tavern-floor.ogg", import.meta.url).href,
+  "tavern-smoky-den": new URL("../assets/audio/bgm/tavern-floor.ogg", import.meta.url).href,
+  "tavern-high-rise-suite": new URL("../assets/audio/bgm/tavern-high-rise-suite.ogg", import.meta.url).href,
+  "tavern-rooftop-club": new URL("../assets/audio/bgm/tavern-rooftop-club.ogg", import.meta.url).href,
+  "tavern-neon-poker-club": new URL("../assets/audio/bgm/tavern-neon-poker-club.ogg", import.meta.url).href,
   table: new URL("../assets/audio/bgm/table-pressure.ogg", import.meta.url).href,
   "summary-success": new URL("../assets/audio/bgm/summary-success.ogg", import.meta.url).href,
   "summary-failure": new URL("../assets/audio/bgm/summary-failure.ogg", import.meta.url).href,
@@ -55,6 +67,10 @@ const BGM_VOLUMES = {
   menu: 0.5,
   stash: 0.44,
   tavern: 0.48,
+  "tavern-smoky-den": 0.48,
+  "tavern-high-rise-suite": 0.46,
+  "tavern-rooftop-club": 0.5,
+  "tavern-neon-poker-club": 0.47,
   table: 0.42,
   "summary-success": 0.46,
   "summary-failure": 0.4,
@@ -63,6 +79,10 @@ const BGM_FADE_MS = {
   menu: 850,
   stash: 850,
   tavern: 900,
+  "tavern-smoky-den": 900,
+  "tavern-high-rise-suite": 950,
+  "tavern-rooftop-club": 980,
+  "tavern-neon-poker-club": 1000,
   table: 1050,
   "summary-success": 1200,
   "summary-failure": 1200,
@@ -106,6 +126,13 @@ const uiTabs = {
 };
 
 window.__blacklightAudio = bgmState;
+
+function clampAudioVolume(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.min(1, Math.max(0, value));
+}
 
 uiRoot.addEventListener("click", (event) => {
   const searchSceneButton = event.target.closest("[data-set-search-scene]");
@@ -222,10 +249,6 @@ uiRoot.addEventListener("click", (event) => {
   }
 
   const payload = {};
-
-  if (action === "stash-cash") {
-    payload.amount = document.getElementById("stash-amount")?.value ?? "0";
-  }
 
   if (action === "enter-table") {
     payload.tableId = button.dataset.tableId;
@@ -376,7 +399,11 @@ function getDesiredBgmKey(state = game.state) {
     return "menu";
   }
   if (state.mode === "search") {
-    return state.run?.floorEntered ? "tavern" : "stash";
+    if (!state.run?.floorEntered) {
+      return "stash";
+    }
+    const tavernSceneId = state.run?.tavernSceneId ?? "smoky-den";
+    return `tavern-${tavernSceneId}`;
   }
   if (state.mode === "table") {
     return "table";
@@ -432,7 +459,7 @@ function startBgmTransition(nextKey, now = performance.now()) {
     if (audio.paused) {
       audio.play().catch(() => {});
     }
-    audio.volume = getBgmTargetVolume(nextKey);
+    audio.volume = clampAudioVolume(getBgmTargetVolume(nextKey));
     return;
   }
 
@@ -471,7 +498,7 @@ function updateBgmFade(now = performance.now()) {
   }
 
   const progress = Math.min(1, (now - fade.startedAt) / fade.duration);
-  audio.volume = fade.from + (fade.to - fade.from) * progress;
+  audio.volume = clampAudioVolume(fade.from + (fade.to - fade.from) * progress);
 
   if (progress < 1) {
     return;
@@ -502,7 +529,7 @@ function updateBgmFade(now = performance.now()) {
     return;
   }
 
-  audio.volume = getBgmTargetVolume(bgmState.currentKey);
+  audio.volume = clampAudioVolume(getBgmTargetVolume(bgmState.currentKey));
   bgmState.fade = null;
 }
 
@@ -529,6 +556,7 @@ function send(action, payload = {}) {
     selectedOpponentId = null;
   }
   uiDirty = true;
+  renderUi();
 }
 
 function currentLanguage() {
@@ -562,7 +590,9 @@ function getSceneHelpers() {
     itemCopy,
     opponentCopy,
     routeCopy,
+    tavernSceneCopy,
     participantName,
+    getKnownOpponentArchetypeLabel,
     getItemDef,
     getTableDef,
     getRunValuables,
@@ -710,6 +740,8 @@ function tableCopy(tableIdOrDef) {
   return {
     ...table,
     name: localized?.name ?? table.name,
+    rawRisk: table.risk,
+    risk: localizeRiskLabel(table.risk, currentLanguage()),
     role: localized?.role ?? table.role,
     hiddenInfo: {
       ...table.hiddenInfo,
@@ -748,6 +780,14 @@ function opponentCopy(opponentIdOrDef) {
   };
 }
 
+function tavernSceneCopy(sceneIdOrDef) {
+  const scene = typeof sceneIdOrDef === "string" ? getTavernSceneDef(sceneIdOrDef) : sceneIdOrDef;
+  if (!scene) {
+    return null;
+  }
+  return { ...scene };
+}
+
 function routeCopy(route) {
   if (!route) {
     return null;
@@ -770,6 +810,18 @@ function participantName(participant) {
   return opponentCopy(participant.archetypeId ?? participant.id)?.name ?? participant.name;
 }
 
+function getKnownOpponentArchetypeLabel(participant) {
+  const opponentId = participant?.id;
+  if (!opponentId || opponentId === "player") {
+    return null;
+  }
+  const record = game.state.persistent?.knownOpponents?.[opponentId];
+  if (!record?.archetypeKnown) {
+    return null;
+  }
+  return t(record.archetype);
+}
+
 function activeTab(group, fallback) {
   return uiTabs[group] ?? fallback;
 }
@@ -780,6 +832,9 @@ function renderUi() {
     activeSearchScene = state.run?.floorEntered ? "tavern" : "stash";
     activeSearchModal = null;
     pendingExtractionAction = null;
+  }
+  if (state.mode === "search" && state.run?.floorEntered && activeSearchScene === "stash") {
+    activeSearchScene = "tavern";
   }
   if (state.mode !== "search") {
     pendingExtractionAction = null;
@@ -950,10 +1005,9 @@ function renderSceneHotspot({
       ? `data-action="${action}"`
       : "";
   return `
-    <div
+    <button
+      type="button"
       class="scene-hotspot ${className} ${tone} ${size}"
-      role="button"
-      tabindex="0"
       aria-label="${title}"
       ${targetAttribute}
       ${dataAttributes}
@@ -964,7 +1018,7 @@ function renderSceneHotspot({
         <strong>${title}</strong>
         ${note ? `<span class="micro">${note}</span>` : ""}
       </span>
-    </div>
+    </button>
   `;
 }
 
@@ -1002,9 +1056,7 @@ function getSearchObjective(run, preview, extractionCommit) {
     return {
       title: "Commit The Exit Or Stand Down",
       badge: "route under review",
-      text: zh
-        ? "你已经把一条出口拉到了眼前。现在要么确认它，要么退回来继续让这局活着。"
-        : "You have already pulled an exit into focus. Either commit it now or back out and keep the run alive.",
+      text: "You have already pulled an exit into focus. Either commit it now or back out and keep the run alive.",
       move: extractionCommit.title,
       why: extractionCommit.routeLabel,
       walk: bestPlan ? money(bestPlan.totalSettled) : "0",
@@ -1017,37 +1069,50 @@ function getSearchObjective(run, preview, extractionCommit) {
     return {
       title: "Prep Once, Then Open Cargo Table",
       badge: "front room first",
-      text: zh
-        ? "这个作者化 demo 希望你先做一次干净的准备动作，再去前房间。在清掉货运桌之前，镜厅桌都不重要。"
-        : "This authored demo wants one clean prep decision, then the front room. Mirror Hall does not matter until Cargo Table is behind you.",
-      move: run.actionPoints > 0 ? (zh ? "买一层掩护，或者揭示一层情报" : "Buy cover or reveal one intel layer") : (zh ? "现在去打货运桌" : "Take Cargo Table now"),
-      why: zh ? "货运桌会解锁整条后续流程" : "Cargo unlocks the rest of the run",
+      text: "This authored demo wants one clean prep decision, then the front room. Mirror Hall does not matter until Cargo Table is behind you.",
+      move: run.actionPoints > 0 ? "Buy cover or reveal one intel layer" : "Take Cargo Table now",
+      why: "Cargo unlocks the rest of the run",
       walk: "Nothing banked yet",
       walkTone: "bad",
       tone: "cool",
     };
   }
 
-  const mirrorOpen = nextTable?.id === "mirror-hall";
-  if (mirrorOpen) {
+  if (nextTable) {
+    const nextTableCopy = tableCopy(nextTable.id);
+    const nextTableName = nextTableCopy?.name ?? nextTable.name;
+    const isMirror = nextTable.id === "mirror-hall";
+    const isEmbers = nextTable.id === "embers-table";
     return {
-      title: bestPlan && (run.heat >= 4 || preview.valuableTotal > 0 || run.stashedCash > 0)
-        ? "Choose Between Mirror Hall And A Clean Exit"
-        : "Mirror Hall Is The Main Score",
-      badge: bestPlan ? "decision point" : "deep room live",
-      text: bestPlan
-        ? (zh
-            ? "你现在身上已经带着真正的价值了。这就是本局最核心的分叉：继续压深房间，还是现在把夜晚落袋为安。"
-            : "You now have real value on you. This is the main fork in the run: push the deep room or cash the night in.")
-        : (zh
-            ? "货运桌已经完成了它的任务。下一次真正的大波动来自镜厅桌，而从这里开始，这局就不会再温柔了。"
-            : "Cargo has done its job. The next big swing is Mirror Hall, and this is where the run stops being gentle."),
-      move: run.actionPoints > 0 ? (zh ? "定路线、降风声，或者直接坐上镜厅桌" : "Set route, cool heat, or sit Mirror Hall") : (zh ? "决定：继续压，还是现在走" : "Decide: press or leave"),
-      why: nextTable
-        ? zh
-          ? `${tableCopy(nextTable.id).name} 会要求你再把 ${money(nextTable.buyIn)} 压回台面，并额外增加 ${nextTable.heatGain} 点风声。`
-          : `${nextTable.name} asks ${money(nextTable.buyIn)} and adds Heat +${nextTable.heatGain}`
-        : "No more rooms to open",
+      title: zh
+        ? bestPlan && (run.heat >= 4 || preview.valuableTotal > 0)
+          ? `在${nextTableName}和撤离之间做选择`
+          : `${nextTableName}已经开放`
+        : isMirror
+          ? bestPlan && (run.heat >= 4 || preview.valuableTotal > 0)
+            ? "Choose Between Mirror Hall And A Clean Exit"
+            : "Mirror Hall Is The Main Score"
+          : `Push ${nextTableName} Or Cash Out`,
+      badge: bestPlan ? (zh ? "分岔点" : "decision point") : (zh ? "新牌桌开放" : "next room live"),
+      text: zh
+        ? isMirror
+          ? "你现在身上已经有真实价值。这里是本局的主分岔：继续压深，还是把今晚带出去。"
+          : isEmbers
+            ? "最后的高压房间已经亮起。这里利润更重，但风声和带货压力也会同步变硬。"
+            : "下一张牌桌已经打开。你可以先整理路线和物品，也可以直接把筹码压回台面。"
+        : bestPlan
+          ? "You now have real value on you. This is the fork in the run: push the next room or cash the night in."
+          : `${nextTableName} is open. Prep your route and tools before you sit, or press immediately if the stack can take it.`,
+      move: zh
+        ? run.actionPoints > 0
+          ? "整理路线、压风声，或者直接入桌"
+          : "决定继续压，还是现在撤"
+        : run.actionPoints > 0
+          ? `Set route, cool heat, or sit ${nextTableName}`
+          : "Decide: press or leave",
+      why: zh
+        ? `${nextTableName} 会要求你再把 ${money(nextTable.buyIn)} 压回台面，并额外增加 ${nextTable.heatGain} 点风声。`
+        : `${nextTableName} asks ${money(nextTable.buyIn)} back onto the felt and adds Heat +${nextTable.heatGain}.`,
       walk: bestPlan ? money(bestPlan.totalSettled) : "0",
       walkTone: bestPlan ? "good" : "bad",
       tone: bestPlan ? "warn" : "cool",
@@ -1057,11 +1122,9 @@ function getSearchObjective(run, preview, extractionCommit) {
   return {
     title: "No More Rooms. Leave Clean",
     badge: "run closing",
-    text: zh
-      ? "这个作者化 demo 的房间路径已经结束。接下来唯一真正有意义的问题，是你到底能留下多少。"
-      : "The authored demo path is finished. From here, the only meaningful choice is how much of the night you actually keep.",
-    move: zh ? "选一条最干净的撤离路线" : "Pick the cleanest extraction route",
-    why: zh ? "剩下的每一块钱，现在都属于撤离逻辑" : "Every remaining dollar is exit logic now",
+    text: "The authored demo path is finished. From here, the only meaningful choice is how much of the night you actually keep.",
+    move: "Pick the cleanest extraction route",
+    why: "Every remaining dollar is exit logic now",
     walk: bestPlan ? money(bestPlan.totalSettled) : "0",
     walkTone: bestPlan ? "good" : "bad",
     tone: "good",
@@ -1072,16 +1135,19 @@ function getTableObjective(run, table, preview) {
   const zh = currentLanguage() === "zh";
   const callAmount = Math.max(0, table.currentBet - table.players[0].currentBet);
   const finalHand = table.handNumber === table.totalHands;
+  const tableDef = table.tableDef;
+  const tableInfo = tableCopy(tableDef.id);
+  const tableLabel = tableInfo?.name ?? tableDef.name;
   const immediateRead =
     table.currentActorId === "player"
       ? callAmount > 0
-        ? currentLanguage() === "zh"
+        ? zh
           ? `你现在正面对 ${money(callAmount)} 的跟注要求`
           : `You are facing ${money(callAmount)} right now`
-        : currentLanguage() === "zh"
+        : zh
           ? "这条下注线现在由你来定义"
           : "You are defining the betting line"
-      : currentLanguage() === "zh"
+      : zh
         ? `${t(getTablePressureFocus(table).actor)} 正主导当前行动`
         : `${getTablePressureFocus(table).actor} owns the current move`;
 
@@ -1090,13 +1156,9 @@ function getTableObjective(run, table, preview) {
       title: finalHand ? "Close Cargo In Profit" : "Build Profit Without Overheating",
       badge: finalHand ? "room closes now" : "front room",
       text: finalHand
-        ? (zh
-            ? "这是前房间的最后一手了。房间奖励会跟着你能不能带着盈利收尾而变化。"
-            : "This is the last hand of the front room. The room reward now follows whether you can close above water.")
-        : (zh
-            ? "货运桌负责教会你这局的节奏：读一个张扬的位置、保持不破产，并带着足够的 momentum 去解锁深房间。"
-            : "Cargo Table teaches the run's rhythm: read one loud seat, stay solvent, and leave with enough momentum to unlock the deep room."),
-      ask: finalHand ? (zh ? "守住收尾" : "Protect the close") : "Stay above buy-in",
+        ? "This is the last hand of the front room. The room reward now follows whether you can close above water."
+        : "Cargo Table teaches the run's rhythm: read one loud seat, stay solvent, and leave with enough momentum to unlock the deep room.",
+      ask: finalHand ? "Protect the close" : "Stay above buy-in",
       prize: `${preview.premium.name} / ${money(preview.premium.value)}`,
       prizeTone: preview.premium.armed ? "good" : "warn",
       read: immediateRead,
@@ -1104,17 +1166,55 @@ function getTableObjective(run, table, preview) {
     };
   }
 
+  if (table.tableDef.id === "ledger-cellar") {
+    return {
+      title: zh ? (finalHand ? "账窖桌正在收口" : "读清安静压力") : finalHand ? "Ledger Cellar Is Settling" : "Read The Quiet Pressure",
+      badge: zh ? (finalHand ? "中段收口" : "中段房间") : finalHand ? "mid-room close" : "quiet room",
+      text: zh
+        ? finalHand
+          ? "这是账窖桌的最后一手。工具会额外惹风声，最好用下注和读人自己把局面收干净。"
+          : "账窖桌的惩罚不在大声，而在工具痕迹。每次牌桌道具都会额外抬高风声。"
+        : finalHand
+          ? "This is Ledger Cellar's last hand. Table tools leave extra heat here, so close with cards and reads if you can."
+          : "Ledger Cellar punishes tool traces. Every table tool use adds extra Heat in this room.",
+      ask: zh ? "少用工具，保持盈利" : "Profit without leaning too hard on tools",
+      prize: `${preview.premium.name} / ${money(preview.premium.value)}`,
+      prizeTone: preview.premium.armed ? "good" : "warn",
+      read: immediateRead,
+      tone: finalHand ? "warn" : "cool",
+    };
+  }
+
+  if (table.tableDef.id === "embers-table") {
+    return {
+      title: zh ? (finalHand ? "余烬桌决定带走多少" : "在烧穿前收筹码") : finalHand ? "Embers Decides What Leaves" : "Bank Chips Before It Burns",
+      badge: zh ? (finalHand ? "终局房间" : "高压房间") : finalHand ? "final room" : "high heat room",
+      text: zh
+        ? finalHand
+          ? "这是最后房间的最后一手。盈利收桌会让风声回落 1 点，但输掉会让撤离非常吃紧。"
+          : "余烬桌筹码更重，也更惩罚犹豫。若能盈利收桌，结算前会降低 1 点风声。"
+        : finalHand
+          ? "This is the last hand of the last room. A profitable close cools Heat by 1 before extraction math."
+          : "Embers pays heavier and punishes hesitation. Close in profit and the room cools Heat by 1.",
+      ask: table.collateral ? (zh ? "保护抵押物并收赢" : "Protect collateral and close ahead") : zh ? "别让高压房间吞掉本金" : "Do not let the high room eat the stake",
+      prize: `${preview.premium.name} / ${money(preview.premium.value)}`,
+      prizeTone: preview.premium.armed ? "good" : "warn",
+      read: immediateRead,
+      tone: finalHand ? "bad" : "warn",
+    };
+  }
+
   return {
-    title: finalHand ? "Mirror Hall Settles The Run" : "Press The Deep Room Carefully",
-    badge: finalHand ? "run-defining hand" : "deep room",
-    text: finalHand
-      ? (zh
-          ? "镜厅桌的最后一手决定这局是开花还是收死。抵押物和风声在这里都更重要。"
-          : "Mirror Hall's last hand is where the run either blooms or folds in. Collateral and heat both matter more here.")
-      : (zh
-          ? "镜厅桌是这版 demo 的风险峰值。你一只眼要盯着奖励线，另一只眼要盯着自己之后还能不能干净离开。"
-          : "Mirror Hall is the demo's risk spike. Keep one eye on the payout line and the other on whether you can still leave clean afterward."),
-    ask: table.collateral ? (zh ? "保住高奖线路" : "Protect the premium line") : (zh ? "决定要不要接受没有抵押物的后果" : "Decide if collateral is worth missing"),
+    title: zh ? (finalHand ? `${tableLabel}决定这一局` : `谨慎推进${tableLabel}`) : finalHand ? "Mirror Hall Settles The Run" : "Press The Deep Room Carefully",
+    badge: zh ? (finalHand ? "关键最后手" : "深房间") : finalHand ? "run-defining hand" : "deep room",
+    text: zh
+      ? finalHand
+        ? `${tableLabel}的最后一手会决定这局是开花还是收死。抵押物和风声在这里都更重要。`
+        : `${tableLabel}是这一阶段的风险峰值。盯住奖励线，也要盯住自己之后还能不能干净离开。`
+      : finalHand
+        ? "Mirror Hall's last hand is where the run either blooms or folds in. Collateral and heat both matter more here."
+        : "Mirror Hall is the demo's risk spike. Keep one eye on the payout line and the other on whether you can still leave clean afterward.",
+    ask: table.collateral ? (zh ? "保护高价值奖励线" : "Protect the premium line") : zh ? "判断是否值得错过抵押线" : "Decide if collateral is worth missing",
     prize: `${preview.premium.name} / ${money(preview.premium.value)}`,
     prizeTone: preview.premium.armed ? "good" : "warn",
     read: immediateRead,
@@ -1125,28 +1225,50 @@ function getTableObjective(run, table, preview) {
 function getSummaryNextStep(summary) {
   const zh = currentLanguage() === "zh";
   if (summary.success) {
+    const forcedCopy =
+      summary.forcedReason === "lockdown"
+        ? zh
+          ? "楼层锁死后，你被迫沿着还能走通的线撤了出去。"
+          : "Lockdown forced you out through the only route still breathing."
+        : summary.forced
+          ? zh
+            ? "这次不是从容收尾，而是被局势推着离场。"
+            : "This was not a clean close; the room forced you out."
+          : zh
+            ? "这次撤离是自己掌控节奏后的结果。"
+            : "This exit came from staying ahead of the room.";
     return {
-      title: "The Run Proved Out",
-      badge: "clean lesson",
-      text: zh
-        ? "当撤离看起来像真正挣来的结果时，这个 demo 就完成了它的任务。下一步该打磨的不是更多系统，而是让第一次上手时每一步都更好读。"
-        : "This demo run is doing its job when the exit feels earned. The next polish target is not more systems, but making each step easier to read on a first play.",
+      title: summary.forced ? "Forced Exit Succeeded" : "Clean Exit",
+      badge: summary.forced ? "forced exit" : "clean lesson",
+      text: forcedCopy,
       banked: money(summary.totalSettled),
       pressure: summary.routeLabel,
-      next: zh ? "下一局可以试一次更贪一点的镜厅桌路线" : "Try one greedier Mirror Hall line next run",
-      tone: "good",
+      next: zh
+        ? summary.forced
+          ? "下一局要在风声钉死前先准备备用路线。"
+          : "下一局可以压更深的房间，或者选择更贪的撤离。"
+        : summary.forced
+          ? "Next run, line up backup routes before the heat meter pins."
+          : "Next run can press a deeper room or a greedier close.",
+      tone: summary.forced ? "warn" : "good",
     };
   }
 
   return {
-    title: "Failure Still Needs To Teach",
-    badge: "collapse read",
-    text: zh
-      ? "就算失败，这局也应该告诉玩家它究竟是从哪里滑下去的。当前 demo checkpoint 的目标，是让失败像一次教训，而不是一团含糊的随机结果。"
-      : "A failed run should still tell the player where it slipped. The current demo checkpoint wants losses to feel instructional, not random or muddy.",
+    title: "The Room Took This One",
+    badge: summary.caught ? "caught" : "collapse read",
+    text: summary.caught
+      ? zh
+        ? `你在撤离前被按住，现金被扣了 ${money(summary.seizedCash ?? 0)}，货物损失 ${money(summary.seizedValuables ?? 0)}。`
+        : `You were grabbed before clearing out. ${money(summary.seizedCash ?? 0)} in cash and ${money(summary.seizedValuables ?? 0)} in goods were seized.`
+      : zh
+        ? "这局不是输在牌桌，就是输在没有给自己留退路。"
+        : "This run failed either on the table or because the exit plan came too late.",
     banked: money(summary.salvaged ?? 0),
     pressure: summary.reason,
-    next: zh ? "下一次更早寄存一次，或者在第二个房间前先预订路线" : "Stash once earlier or reserve a route before the second room",
+    next: zh
+      ? "下一次更早降低风声，或者在第二间房前就把路线和物品都备好。"
+      : "Next run, lower heat earlier and line up your route and tools before the second room.",
     tone: "warn",
   };
 }
@@ -1396,6 +1518,7 @@ function renderInventoryCard(item) {
 function renderSettlementSnapshot(run, preview = buildExtractionPreview(run)) {
   const bestPlan = getBestAvailablePlan(preview);
   const zh = currentLanguage() === "zh";
+  const carriedTotal = run.cashOnHand + preview.valuableTotal;
   return `
     <div class="card-block settlement-card top-gap">
       <div class="section-heading">
@@ -1407,8 +1530,8 @@ function renderSettlementSnapshot(run, preview = buildExtractionPreview(run)) {
       </div>
       <div class="preview-grid">
         ${renderPreviewCell("Cash in coat", money(run.cashOnHand))}
-        ${renderPreviewCell("Stash net", money(preview.stash.net), "cool")}
         ${renderPreviewCell("Valuables", money(preview.valuableTotal), "warm")}
+        ${renderPreviewCell("Carry total", money(carriedTotal), "cool")}
         ${renderPreviewCell("Best settle", bestPlan ? money(bestPlan.totalSettled) : "0", bestPlan ? "good" : "bad")}
       </div>
       <p class="micro">
@@ -1420,7 +1543,7 @@ function renderSettlementSnapshot(run, preview = buildExtractionPreview(run)) {
             : t("Nothing currently gets the run cleanly into the vault.")
         }
       </p>
-      <p class="micro">${zh ? `寄存总额 ${money(run.stashedCash)}，预计手续费 ${money(preview.stash.fee)}。` : `Stash fee projects to ${money(preview.stash.fee)} on ${money(run.stashedCash)} gross.`}</p>
+      <p class="micro">${zh ? "这一局只结算身上现金与带出的物品，不再存在额外寄存现金。" : "This run settles only the cash and goods still on you. There is no separate cash stash flow."}</p>
     </div>
   `;
 }
@@ -1622,7 +1745,6 @@ function shouldPrioritizeExtraction(run, preview) {
     pendingExtractionAction ||
       run.completedTables.length ||
       run.lastTableResult ||
-      run.stashedCash > 0 ||
       preview.valuableTotal > 0 ||
       run.heat > 0,
   );
@@ -1683,12 +1805,13 @@ function renderSearchPresenceStrip(run, preview = buildExtractionPreview(run)) {
   const valuables = getRunValuables(run);
   const reservation = run.fixedRouteReservation ? routeCopy(run.fixedRouteReservation) : null;
   const routeOffer = routeCopy(run.fixedRouteOffer);
+  const hiddenRoutes = [preview.serviceStairs, preview.riverLaunch].filter((plan) => plan?.visible);
   return `
     <div class="scene-presence-strip search-presence-strip">
-      <div class="presence-card stash ${run.phase.stashUsed ? "cool" : "warm"}">
-        <span class="presence-label">${t("Ledger Counter")}</span>
-        <strong>${run.phase.stashUsed ? t("Stash Used") : t("Stash Open")}</strong>
-        <span class="presence-copy">${currentLanguage() === "zh" ? `${money(run.stashedCash)} 已寄存 / ${money(preview.stash.net)} 预计净值` : `${money(run.stashedCash)} parked / ${money(preview.stash.net)} projected`}</span>
+      <div class="presence-card stash cool">
+        <span class="presence-label">${t("Cash Line")}</span>
+        <strong>${currentLanguage() === "zh" ? `${money(run.cashOnHand)} 仍在身上` : `${money(run.cashOnHand)} still carried`}</strong>
+        <span class="presence-copy">${currentLanguage() === "zh" ? "这一局不会额外寄存现金，真正结算要靠撤离成功。" : "Cash stays exposed until extraction actually clears."}</span>
       </div>
       <div class="presence-card shelf ${run.shopStock.length ? "neutral" : "warn"}">
         <span class="presence-label">${t("Back Shelf")}</span>
@@ -1699,6 +1822,11 @@ function renderSearchPresenceStrip(run, preview = buildExtractionPreview(run)) {
         <span class="presence-label">${t("Service Gate")}</span>
         <strong>${reservation ? reservation.name : routeOffer.name}</strong>
         <span class="presence-copy">${reservation ? t("Reserved line is waiting on this return.") : t("No route reserved yet.")}</span>
+      </div>
+      <div class="presence-card route ${hiddenRoutes.length ? "good" : "neutral"}">
+        <span class="presence-label">${t("Hidden routes")}</span>
+        <strong>${hiddenRoutes.length ? hiddenRoutes.map((plan) => plan.shortLabel).join(" / ") : t("Still hidden")}</strong>
+        <span class="presence-copy">${hiddenRoutes.length ? t("Item-led lines are now visible in extraction.") : t("Some exits only appear after the right item is used or carried.")}</span>
       </div>
       <div class="presence-card coat ${valuables.length ? "warn" : "neutral"}">
         <span class="presence-label">${t("Coat Check")}</span>
@@ -1740,7 +1868,7 @@ function renderExposureLedger(run, preview = buildExtractionPreview(run)) {
       <div class="preview-grid exposure-grid">
         ${renderPreviewCell(t("Safe now"), bestPlan ? money(bestPlan.totalSettled) : "0", bestPlan ? "good" : "bad")}
         ${renderPreviewCell(t("Exposed carry"), money(exposedCarry), exposedCarry > 0 ? "warn" : "neutral")}
-        ${renderPreviewCell(t("Stash waiting"), money(run.stashedCash), run.stashedCash > 0 ? "cool" : "neutral")}
+        ${renderPreviewCell(t("Hidden routes"), [preview.serviceStairs, preview.riverLaunch].filter((plan) => plan?.visible).length || t("None"), [preview.serviceStairs, preview.riverLaunch].some((plan) => plan?.visible) ? "good" : "neutral")}
         ${renderPreviewCell(
           t("If you stay"),
           nextTable ? `${tableCopy(nextTable.id).name} ${money(nextTable.buyIn)} / ${t("Heat")} +${nextTable.heatGain}` : t("No more rooms"),
@@ -1749,11 +1877,9 @@ function renderExposureLedger(run, preview = buildExtractionPreview(run)) {
       </div>
       <p class="micro">
         ${
-          run.stashedCash > 0
-            ? currentLanguage() === "zh"
-              ? `寄存只是停放，不算真正落袋。只有撤离成功，${money(preview.stash.net)} 才会进金库。`
-              : `Stash is parked, not banked. ${money(preview.stash.net)} is what reaches the vault only if extraction succeeds.`
-            : t("Nothing in stash yet. Every dollar and good in the coat is still riding on the next decision.")
+          currentLanguage() === "zh"
+            ? "现金和货物都会一直暴露到真正撤离为止。隐藏路线只会在对应条件满足后出现。"
+            : "Cash and goods stay exposed until a real extraction lands. Hidden routes only appear once their conditions are met."
         }
       </p>
       <p class="micro">
@@ -1779,6 +1905,7 @@ function getNextTablePressure(run) {
 
 function renderDestinationCard(run, tableId, { compact = false } = {}) {
   const table = tableCopy(tableId);
+  const rawTable = getTableDef(tableId);
   const intel = run.intel[tableId];
   const lockedByFlow = table.unlocksAfter && !run.completedTables.includes(table.unlocksAfter);
   const alreadyDone = run.completedTables.includes(tableId);
@@ -1805,7 +1932,7 @@ function renderDestinationCard(run, tableId, { compact = false } = {}) {
         table.buyIn,
       )}</span></div>
       <div class="pill-row">
-        <span class="pill ${table.risk === "Low" ? "good" : "warn"}">${t(table.risk)}</span>
+        <span class="pill ${rawTable.risk === "Low" ? "good" : "warn"}">${table.risk}</span>
         <span class="pill">${t("Heat")} +${table.heatGain}</span>
         <span class="pill ${alreadyDone ? "good" : lockedByFlow || insufficientCash ? "warn" : "cool"}">${statusLabel}</span>
       </div>
@@ -2757,17 +2884,23 @@ function getValuableTotal(items) {
 }
 
 function buildExtractionPreview(run) {
-  const stash = game.projectStashNet(run.stashedCash);
+  const scene = getTavernSceneDef(run?.tavernSceneId);
+  const stash = { gross: 0, fee: 0, net: 0 };
   const valuables = getRunValuables(run);
   const valuableTotal = getValuableTotal(valuables);
   const routeIntel = {
     publicExit: Boolean(run.routeIntel?.publicExit),
     fixedWhisper: Boolean(run.routeIntel?.fixedWhisper),
     emergency: Boolean(run.routeIntel?.emergency),
+    serviceStairs: Boolean(run.routeIntel?.serviceStairs),
+    riverLaunch: Boolean(run.routeIntel?.riverLaunch),
   };
-  const generalFee = 30 + Math.floor(run.cashOnHand * 0.15) + (run.heat === 5 ? 60 : 0);
+  const generalBaseFee =
+    (scene?.generalExtractionFlatFee ?? 30) + Math.floor(run.cashOnHand * (scene?.generalExtractionRate ?? 0.15));
+  const generalFee = generalBaseFee + (run.heat === 5 ? scene?.lockdownSurcharge ?? 60 : 0);
   const generalVisible = routeIntel.publicExit;
-  const generalAvailable = generalVisible && run.heat < 6 && run.cashOnHand >= generalFee;
+  const generalOpen = run.heat < 6;
+  const generalAvailable = generalVisible && generalOpen && run.cashOnHand >= generalFee;
   const generalSettledCash = Math.max(0, run.cashOnHand - generalFee);
   const fixed = run.fixedRouteReservation;
   const fixedVisible = routeIntel.fixedWhisper || Boolean(fixed);
@@ -2786,14 +2919,20 @@ function buildExtractionPreview(run) {
   const dropbagCashSettled = Math.max(0, run.cashOnHand - dropbagCashSacrifice - 10);
   const dropbagValuablesAvailable = dropbagVisible && run.cashOnHand >= 10 && valuables.length > 0;
   const dropbagValuablesSettled = Math.max(0, run.cashOnHand - 10);
+  const serviceRoute = routeCopy(getSpecialExtractionRoute(run.tavernSceneId, "service-stairs"));
+  const riverRoute = routeCopy(getSpecialExtractionRoute(run.tavernSceneId, "river-launch"));
+  const serviceStairsVisible = routeIntel.serviceStairs;
+  const riverLaunchVisible = routeIntel.riverLaunch;
+  const serviceStairsAvailable = serviceStairsVisible && run.heat <= serviceRoute.maxHeat && run.cashOnHand >= serviceRoute.finalCost;
+  const riverLaunchAvailable = riverLaunchVisible && run.heat <= riverRoute.maxHeat && run.cashOnHand >= riverRoute.finalCost;
 
   return {
     stash,
     valuableTotal,
     general: {
       key: "general",
-      label: currentLanguage() === "zh" ? "公开撤离" : "General extraction",
-      shortLabel: currentLanguage() === "zh" ? "前门出口" : "Front exit",
+      label: t("General extraction"),
+      shortLabel: t("Front exit"),
       visible: generalVisible,
       available: generalAvailable,
       fee: generalFee,
@@ -2804,7 +2943,7 @@ function buildExtractionPreview(run) {
       reason:
         !generalVisible
           ? t("No exit line is live yet. Work the floor, uncover intel, or stir an event first.")
-          : run.heat >= 6
+          : !generalOpen
           ? t("Lockdown heat shut the public exit.")
           : run.cashOnHand < generalFee
             ? tm("needMoreForGeneralFee", { need: money(generalFee - run.cashOnHand) })
@@ -2870,11 +3009,49 @@ function buildExtractionPreview(run) {
             ? t("No valuables in the coat to throw overboard.")
             : tm("dropbagValuablesReason", { amount: money(valuableTotal) }),
     },
+    serviceStairs: {
+      key: "service-stairs",
+      label: serviceRoute.name,
+      shortLabel: serviceRoute.name,
+      visible: serviceStairsVisible,
+      available: serviceStairsAvailable,
+      fee: serviceRoute.finalCost,
+      settledCash: Math.max(0, run.cashOnHand - serviceRoute.finalCost),
+      stashNet: 0,
+      valuableTotal,
+      totalSettled: Math.max(0, run.cashOnHand - serviceRoute.finalCost) + valuableTotal,
+      reason: !serviceStairsVisible
+        ? t("This line stays hidden until the kitchen side is opened by the right item or contact.")
+        : run.heat > serviceRoute.maxHeat
+          ? tm("fixedRouteTooHot", { route: serviceRoute.name, maxHeat: serviceRoute.maxHeat })
+          : run.cashOnHand < serviceRoute.finalCost
+            ? tm("fixedRouteNeedCash", { need: money(serviceRoute.finalCost - run.cashOnHand) })
+            : serviceRoute.flavor,
+    },
+    riverLaunch: {
+      key: "river-launch",
+      label: riverRoute.name,
+      shortLabel: riverRoute.name,
+      visible: riverLaunchVisible,
+      available: riverLaunchAvailable,
+      fee: riverRoute.finalCost,
+      settledCash: Math.max(0, run.cashOnHand - riverRoute.finalCost),
+      stashNet: 0,
+      valuableTotal,
+      totalSettled: Math.max(0, run.cashOnHand - riverRoute.finalCost) + valuableTotal,
+      reason: !riverLaunchVisible
+        ? t("The river line only appears once the dockside key or contact has been burned.")
+        : run.heat > riverRoute.maxHeat
+          ? tm("fixedRouteTooHot", { route: riverRoute.name, maxHeat: riverRoute.maxHeat })
+          : run.cashOnHand < riverRoute.finalCost
+            ? tm("fixedRouteNeedCash", { need: money(riverRoute.finalCost - run.cashOnHand) })
+            : riverRoute.flavor,
+    },
   };
 }
 
 function getBestAvailablePlan(preview) {
-  return [preview.general, preview.fixed, preview.dropbagCash, preview.dropbagValuables]
+  return [preview.serviceStairs, preview.riverLaunch, preview.general, preview.fixed, preview.dropbagCash, preview.dropbagValuables]
     .filter((plan) => plan.available)
     .sort((left, right) => right.totalSettled - left.totalSettled)[0] ?? null;
 }
@@ -2907,6 +3084,52 @@ function getRoomRewardPreview(run, table) {
     };
   }
 
+  if (table.tableDef.id === "ledger-cellar") {
+    const fallbackId = player.stack >= 130 ? "pearl-necklace" : "emerald-brooch";
+    return {
+      premium: {
+        id: "pearl-necklace",
+        name: itemCopy("pearl-necklace").name,
+        value: getItemDef("pearl-necklace").value,
+        armed: player.stack >= 130,
+        text: player.stack >= 130
+          ? t("A disciplined profit line is enough to pull the Pearl Necklace out of the cellar.")
+          : t("Without a stronger close, the room drifts toward the Emerald Brooch."),
+      },
+      fallback: {
+        id: "emerald-brooch",
+        name: itemCopy("emerald-brooch").name,
+        value: getItemDef("emerald-brooch").value,
+        text: t("The quieter cellar usually pays the Emerald Brooch when the top shelf stays locked."),
+      },
+      roomState: player.stack >= 130 ? "Premium armed" : "Fallback only",
+      roomTone: player.stack >= 130 ? "good" : "warn",
+    };
+  }
+
+  if (table.tableDef.id === "embers-table") {
+    const fallbackId = player.stack >= 220 ? "vault-promissory" : "obsidian-idol";
+    return {
+      premium: {
+        id: "vault-promissory",
+        name: itemCopy("vault-promissory").name,
+        value: getItemDef("vault-promissory").value,
+        armed: player.stack >= 220,
+        text: player.stack >= 220
+          ? t("A deep win at Embers turns the room toward the Vault Promissory.")
+          : t("If the room closes shorter, the Obsidian Idol is the more likely take."),
+      },
+      fallback: {
+        id: "obsidian-idol",
+        name: itemCopy("obsidian-idol").name,
+        value: getItemDef("obsidian-idol").value,
+        text: t("The late room still pays heavy, even when the top line misses."),
+      },
+      roomState: player.stack >= 220 ? "Premium armed" : "Fallback only",
+      roomTone: player.stack >= 220 ? "good" : "warn",
+    };
+  }
+
   const fallbackId = player.stack >= 170 ? "sealed-bond" : "gold-cased-watch";
   const premiumArmed = Boolean(table.collateral);
   return {
@@ -2932,6 +3155,19 @@ function getRoomRewardPreview(run, table) {
     roomState: premiumArmed ? "Premium armed" : "Fallback only",
     roomTone: premiumArmed ? "good" : "warn",
   };
+}
+
+function formatActionLabel(action) {
+  if (!action) {
+    return null;
+  }
+  if (action === "all-in") {
+    return t("All-in");
+  }
+  if (action === "bet") {
+    return t("Bet");
+  }
+  return t(action.charAt(0).toUpperCase() + action.slice(1));
 }
 
 function describeOpponentTell(participant, table) {
@@ -2971,6 +3207,34 @@ function describeOpponentTell(participant, table) {
     if (finalHand) return "He leans in now that the room is worth bruising.";
     if (covering) return "He pushes chips with a wrist that looks too relaxed.";
     return "Patience sits on him like a threat.";
+  }
+
+  if (archetype === "river-shark") {
+    if (isActing) return "He idles until the pot looks half-settled, then suddenly wakes up.";
+    if (finalHand) return "The last hand is when he expects everyone else to get scared first.";
+    if (covering) return "That calm cover bet feels more predatory than loud.";
+    return "He prefers the river, but he still plants pressure earlier than he admits.";
+  }
+
+  if (archetype === "velvet-rook") {
+    if (isActing) return "Everything about the motion says restraint before it says attack.";
+    if (covering) return "The line is neat, but the bet sizing is already asking a question.";
+    if (invested) return "She protects medium edges like they were premium ones.";
+    return "The room feels tighter whenever she chooses not to speak.";
+  }
+
+  if (archetype === "house-viper") {
+    if (isActing) return "The wait is part of the pressure. He moves once the room has already leaned in.";
+    if (finalHand) return "This is exactly the kind of late pot he likes to own.";
+    if (covering) return "The cover comes with a stare that wants a mistake back.";
+    return "He rarely overacts. The danger is in how long he stays still.";
+  }
+
+  if (archetype === "ash-smuggler") {
+    if (isActing) return "He hides the real decision under an almost lazy reach for chips.";
+    if (covering) return "The bet lands soft, which usually means he wants action behind it.";
+    if (invested) return "Smoke and softness are doing more work here than the cards.";
+    return "He bluffs just enough to make the honest lines feel wrong.";
   }
 
   return "The seat is giving away less than you'd like.";
@@ -3228,7 +3492,9 @@ function cardAssetSrc(card) {
 function renderCard(card) {
   return `
     <div class="playing-card face-card">
-      <img src="${cardAssetSrc(card)}" alt="${formatCardInline(card)}" loading="lazy" decoding="async" />
+      <img src="${cardAssetSrc(card)}" alt="${formatCardInline(card)}" loading="lazy" decoding="async" onerror="this.style.display='none';this.parentElement.classList.add('image-failed');" />
+      <span class="rank">${cardFaceRank(card.rank)}</span>
+      <span class="suit ${card.suit === "H" || card.suit === "D" ? "red" : "black"}">${cardSuitGlyph(card.suit)}</span>
     </div>
   `;
 }
@@ -3236,7 +3502,9 @@ function renderCard(card) {
 function renderHiddenCard(label = "Hidden") {
   return `
     <div class="playing-card back">
-      <img src="${CARD_BACK_SRC}" alt="${t(label)}" loading="lazy" decoding="async" />
+      <img src="${CARD_BACK_SRC}" alt="${t(label)}" loading="lazy" decoding="async" onerror="this.style.display='none';this.parentElement.classList.add('image-failed');" />
+      <span class="rank">?</span>
+      <span class="suit">${t(label)}</span>
     </div>
   `;
 }
@@ -3273,8 +3541,6 @@ function buildTextState() {
       searchScene: activeSearchScene,
       actionPoints: run.actionPoints,
       cashOnHand: run.cashOnHand,
-      stashedCash: run.stashedCash,
-      projectedStashNet: game.projectStashNet(run.stashedCash).net,
       heat: run.heat,
       heatBand: localizeHeatBand(getHeatBand(run.heat), currentLanguage()),
       inventory: run.inventory.map((item) => itemCopy(item.itemId).name),
@@ -3289,7 +3555,7 @@ function buildTextState() {
           id: tableId,
           name: table.name,
           buyIn: table.buyIn,
-          risk: table.risk,
+          risk: t(table.risk),
           unlocked: !table.unlocksAfter || run.completedTables.includes(table.unlocksAfter),
           completed: run.completedTables.includes(tableId),
           intel: run.intel[tableId],
@@ -3304,7 +3570,9 @@ function buildTextState() {
       riskLedger: {
         safeNow: bestPlan?.totalSettled ?? 0,
         exposedCarry: run.cashOnHand + extractionPreview.valuableTotal,
-        stashWaiting: run.stashedCash,
+        hiddenRoutes: [extractionPreview.serviceStairs, extractionPreview.riverLaunch]
+          .filter((plan) => plan?.visible)
+          .map((plan) => plan.shortLabel),
         nextTable: nextTable
           ? {
               id: nextTable.id,
@@ -3344,7 +3612,7 @@ function buildTextState() {
       objective: {
         title: t(objective.title),
         move: t(objective.move),
-        walk: objective.walk,
+        walk: t(objective.walk),
       },
       lastTableResult: run.lastTableResult,
       handoffBeat: game.state.handoffBeat,
@@ -3355,7 +3623,8 @@ function buildTextState() {
     const table = state.run.currentTable;
     const player = table.players[0];
     const pressureFocus = getTablePressureFocus(table);
-    const objective = getTableObjective(state.run, table, getRoomRewardPreview(state.run, table));
+    const rewardPreview = getRoomRewardPreview(state.run, table);
+    const objective = getTableObjective(state.run, table, rewardPreview);
     return {
       ...base,
       table: tableCopy(table.tableDef).name,
@@ -3374,10 +3643,15 @@ function buildTextState() {
       opponents: table.players
         .filter((participant) => participant.id !== "player")
         .map((participant) => ({
-          name: participant.name,
+          name: participantName(participant),
           stack: participant.stack,
           folded: participant.folded,
-          lastAction: participant.lastAction ?? null,
+          lastAction: formatActionLabel(participant.lastAction),
+          banter: participant.banter ?? null,
+          tell: participant.tell ?? null,
+          tensionLevel: participant.tensionLevel ?? 0,
+          aiStatus: participant.aiStatus ?? null,
+          innerMonologue: participant.aiNative?.inner_monologue ?? null,
           signalRead:
             table.signalRead && table.signalRead.targetId === participant.id
               ? {
@@ -3392,7 +3666,10 @@ function buildTextState() {
       stageCue: table.stageCue,
       tableBeat: game.state.tableBeat,
       lastHandSummary: table.lastHandSummary,
-      roomRewardPreview: getRoomRewardPreview(state.run, table),
+      roomRewardPreview: {
+        ...rewardPreview,
+        roomState: t(rewardPreview.roomState),
+      },
       pressureFocus: {
         actor: t(pressureFocus.actor),
         status: t(pressureFocus.status),
@@ -3405,7 +3682,7 @@ function buildTextState() {
       },
       tableItems: state.run.inventory
         .filter((item) => getItemDef(item.itemId).phase === "table")
-        .map((item) => item.name),
+        .map((item) => itemCopy(item.itemId).name),
       spentToolMoments: table.spentToolMoments,
       log: table.log.slice(-5),
     };
@@ -3510,13 +3787,56 @@ function drawAmbientLights(t, heat) {
 }
 
 function buildSceneArtMap() {
-  return {
+  const sceneMap = {
     menu: createSceneArt(new URL("../assets/scene-plates/menu-title-bg.png?v=20260402c", import.meta.url).href),
     stash: createSceneArt(new URL("../assets/scene-plates/藏匿点场景.png", import.meta.url).href),
     search: createSceneArt(new URL("../assets/scene-plates/德扑酒馆全貌.png", import.meta.url).href),
     table: createSceneArt(new URL("../assets/scene-plates/德扑牌桌视角.png", import.meta.url).href),
     summary: createSceneArt(new URL("../assets/scene-plates/德扑撤离视角.png", import.meta.url).href),
   };
+  Object.values(TAVERN_SCENES).forEach((scene) => {
+    sceneMap[`search-${scene.id}`] = createSceneArt(
+      new URL(`../assets/scene-plates/${scene.bgImage}`, import.meta.url).href,
+    );
+  });
+  return sceneMap;
+}
+
+function getBackdropVideoKey(state) {
+  if (state.mode === "menu") {
+    return "menu";
+  }
+
+  if (state.mode === "search") {
+    if (activeSearchScene === "stash" || !state.run?.floorEntered) {
+      return "stash";
+    }
+    return `tavern-${state.run?.tavernSceneId ?? "smoky-den"}`;
+  }
+
+  if (state.mode === "table" && state.run?.currentTable) {
+    return getPokerVideoKey(state.run.currentTable);
+  }
+
+  if (state.mode === "summary") {
+    return state.latestSummary?.success ? "extraction-success" : "extraction-failure";
+  }
+
+  return null;
+}
+
+function getPokerVideoKey(table) {
+  if (table.lastHandSummary || table.pendingNextHand || table.pendingConclusion) {
+    return "poker-table-showdown";
+  }
+  if (table.players.some((participant) => !participant.folded && participant.stack <= 0)) {
+    return "poker-table-allin";
+  }
+  const highStakesThreshold = Math.max(table.tableDef.buyIn * 2, table.tableDef.openBet * 4);
+  if (table.pot >= highStakesThreshold) {
+    return "poker-table-highstakes";
+  }
+  return "poker-table-normal";
 }
 
 function createSceneArt(src) {
@@ -3533,20 +3853,57 @@ function drawIllustrationBackdrop(state, t) {
       : state.mode === "search"
         ? activeSearchScene === "stash"
           ? "stash"
-          : "search"
+          : `search-${state.run?.tavernSceneId ?? "smoky-den"}`
         : state.mode === "table"
           ? "table"
           : "summary";
-  const image = SCENE_ART[artKey];
-  if (!image?.complete || !image.naturalWidth) {
+  const videoKey = getBackdropVideoKey(state);
+  VIDEO_BACKGROUNDS.setKey(videoKey);
+  const image = SCENE_ART[artKey] ?? SCENE_ART.search;
+  const drewVideo = VIDEO_BACKGROUNDS.draw(
+    ctx,
+    {},
+    { x: 0, y: 0, w: SCENE_WIDTH, h: SCENE_HEIGHT },
+  );
+  if (!drewVideo && (!image?.complete || !image.naturalWidth)) {
     return false;
   }
 
   ctx.imageSmoothingEnabled = true;
-  drawCoverSceneArt(image, SCENE_ART_CROP[artKey]);
+  if (!drewVideo) {
+    drawCoverSceneArt(image, SCENE_ART_CROP[artKey]);
+  }
   drawIllustrationGrade(state, t);
   drawIllustrationMotionLayer(state, t);
+  if (drewVideo) {
+    drawVideoWatermarkCover(state.mode);
+  }
   return true;
+}
+
+function drawVideoWatermarkCover(mode) {
+  const x = 276;
+  const y = 188;
+  const w = 84;
+  const h = 37;
+  const radius = 9;
+  const gradient = ctx.createLinearGradient(x, y, x + w, y + h);
+  gradient.addColorStop(0, mode === "summary" ? "#070a0f" : "#080706");
+  gradient.addColorStop(1, mode === "summary" ? "#030508" : "#030303");
+
+  ctx.save();
+  ctx.fillStyle = gradient;
+  ctx.strokeStyle = "rgba(247, 224, 181, 0.16)";
+  ctx.lineWidth = 1 / PIXEL_SCALE;
+  ctx.beginPath();
+  if (typeof ctx.roundRect === "function") {
+    ctx.roundRect(x, y, w, h, radius);
+  } else {
+    ctx.rect(x, y, w, h);
+  }
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawCoverSceneArt(image, crop = {}) {
@@ -4364,6 +4721,12 @@ function heatClass(heat) {
 function describeRuleHint(table) {
   if (table.tableDef.id === "cargo-table") {
     return currentLanguage() === "zh" ? "第一次激进行为可减免 10 筹码" : "First aggressive action gets a 10-chip discount";
+  }
+  if (table.tableDef.id === "ledger-cellar") {
+    return currentLanguage() === "zh" ? "每次牌桌道具额外增加 1 点风声" : "Each table tool adds 1 extra Heat";
+  }
+  if (table.tableDef.id === "embers-table") {
+    return currentLanguage() === "zh" ? "盈利收桌会在撤离前降低 1 点风声" : "Profitable close cools Heat by 1 before extraction";
   }
   return currentLanguage() === "zh" ? "抵押物会解锁最后一手的最佳奖励" : "Collateral unlocks the best final-hand reward";
 }

@@ -16,18 +16,95 @@ export const HEAT_LEVELS = {
 export const RUN_STRUCTURE = Object.freeze({
   targetModel: "roguelike",
   demoPathMode: "fixed-authored-path",
-  demoTablePath: ["cargo-table", "mirror-hall"],
+  demoTablePath: ["cargo-table", "ledger-cellar", "mirror-hall", "embers-table"],
   futureTablePools: {
-    opener: ["cargo-table"],
-    pressure: ["mirror-hall"],
+    opener: ["cargo-table", "ledger-cellar"],
+    pressure: ["mirror-hall", "embers-table"],
   },
   notes: [
     "The shipped game should draw run content from seeded pools.",
-    "The current demo intentionally uses a fixed two-room path to validate pacing, readability, and presentation.",
+    "The current demo intentionally uses a fixed four-room path to validate pacing, readability, and presentation.",
   ],
 });
 
 export const TABLE_ORDER = [...RUN_STRUCTURE.demoTablePath];
+
+export const TAVERN_SCENES = {
+  "smoky-den": {
+    id: "smoky-den",
+    name: "Smoky Den",
+    bgm: "tavern-floor.ogg",
+    bgImage: "tavern-smoky-den-bg.png",
+    uiTone: "warm",
+    atmosphere: "A dimly lit den filled with smoke and the sound of chips clinking.",
+    heatReductionCost: 24,
+    generalExtractionFlatFee: 24,
+    generalExtractionRate: 0.12,
+    lockdownSurcharge: 45,
+    fixedRouteReserveDiscount: 10,
+    fixedRouteGraceSearches: 2,
+    entryHeatBonus: 0,
+    intelBonus: 0,
+    forcedExitLossFactor: 0.75,
+    hiddenRouteRevealDiscount: 0,
+  },
+  "high-rise-suite": {
+    id: "high-rise-suite",
+    name: "High-Rise Suite",
+    bgm: "tavern-high-rise-suite.ogg",
+    bgImage: "tavern-high-rise-suite-bg.png",
+    uiTone: "cool",
+    atmosphere: "A private suite above the city where money talks softly and pressure lingers.",
+    heatReductionCost: 36,
+    generalExtractionFlatFee: 42,
+    generalExtractionRate: 0.18,
+    lockdownSurcharge: 70,
+    fixedRouteReserveDiscount: 0,
+    fixedRouteGraceSearches: 3,
+    entryHeatBonus: 0,
+    intelBonus: 0,
+    forcedExitLossFactor: 0.88,
+    hiddenRouteRevealDiscount: 0,
+  },
+  "rooftop-club": {
+    id: "rooftop-club",
+    name: "Rooftop Club",
+    bgm: "tavern-rooftop-club.ogg",
+    bgImage: "tavern-rooftop-club-bg.png",
+    uiTone: "good",
+    atmosphere: "A social rooftop game where style, risk, and noise blur together.",
+    heatReductionCost: 30,
+    generalExtractionFlatFee: 28,
+    generalExtractionRate: 0.13,
+    lockdownSurcharge: 60,
+    fixedRouteReserveDiscount: 5,
+    fixedRouteGraceSearches: 1,
+    entryHeatBonus: 1,
+    intelBonus: 0,
+    forcedExitLossFactor: 0.68,
+    hiddenRouteRevealDiscount: 5,
+  },
+  "neon-poker-club": {
+    id: "neon-poker-club",
+    name: "Neon Poker Club",
+    bgm: "tavern-neon-poker-club.ogg",
+    bgImage: "tavern-neon-poker-club-bg.png",
+    uiTone: "warn",
+    atmosphere: "A synthetic late-night club where reads feel digital and every move leaves a trace.",
+    heatReductionCost: 30,
+    generalExtractionFlatFee: 34,
+    generalExtractionRate: 0.14,
+    lockdownSurcharge: 55,
+    fixedRouteReserveDiscount: 0,
+    fixedRouteGraceSearches: 2,
+    entryHeatBonus: 0,
+    intelBonus: 1,
+    forcedExitLossFactor: 0.72,
+    hiddenRouteRevealDiscount: 10,
+  },
+};
+
+export const TAVERN_SCENE_ORDER = Object.freeze(Object.keys(TAVERN_SCENES));
 
 export const TABLES = {
   "cargo-table": {
@@ -37,10 +114,10 @@ export const TABLES = {
     buyIn: 60,
     risk: "Low",
     heatGain: 1,
-    ante: 10,
+    smallBlind: 10,
     openBet: 20,
     raiseIncrement: 20,
-    hands: 3,
+    hands: 2,
     unlocksAfter: null,
     opponentIds: ["dock-braggart", "ledger-clerk"],
     publicInfo: {
@@ -52,8 +129,35 @@ export const TABLES = {
       opponents: "Dock Braggart and Ledger Clerk",
       reward: "Positive results can yield low or mid-tier valuables. First clears strongly bias toward the Ivory Chip.",
     },
+    firstAggressionDiscount: 10,
     baseRewardPool: ["old-silver-lighter", "ivory-chip", "ruby-cufflink"],
     signatureReward: "ivory-chip",
+  },
+  "ledger-cellar": {
+    id: "ledger-cellar",
+    name: "Ledger Cellar",
+    role: "Mid-stakes pressure room with quieter opponents and tighter reads",
+    buyIn: 90,
+    risk: "Medium",
+    heatGain: 1,
+    smallBlind: 15,
+    openBet: 30,
+    raiseIncrement: 30,
+    hands: 2,
+    unlocksAfter: "cargo-table",
+    opponentIds: ["river-shark", "velvet-rook"],
+    publicInfo: {
+      buyIn: 90,
+      risk: "Medium",
+    },
+    hiddenInfo: {
+      rule: "The room is quieter, but every table tool use raises 1 extra heat. Soft reads matter more than brute pressure.",
+      opponents: "River Shark and Velvet Rook",
+      reward: "Positive results tend to pay out layered valuables that bridge the run into Mirror Hall.",
+    },
+    tableToolHeatBonus: 1,
+    baseRewardPool: ["ruby-cufflink", "pearl-necklace", "emerald-brooch"],
+    signatureReward: "pearl-necklace",
   },
   "mirror-hall": {
     id: "mirror-hall",
@@ -62,11 +166,11 @@ export const TABLES = {
     buyIn: 120,
     risk: "Medium-High",
     heatGain: 2,
-    ante: 20,
+    smallBlind: 20,
     openBet: 40,
     raiseIncrement: 40,
     hands: 3,
-    unlocksAfter: "cargo-table",
+    unlocksAfter: "ledger-cellar",
     opponentIds: ["calm-widow", "smiling-knife"],
     publicInfo: {
       buyIn: 120,
@@ -77,8 +181,36 @@ export const TABLES = {
       opponents: "Calm Widow and Smiling Knife",
       reward: "Positive results grant high-tier valuables. The collateral line can pay out the Antique Commemorative Coin.",
     },
+    allowCollateral: true,
     baseRewardPool: ["gold-cased-watch", "antique-coin", "sealed-bond"],
     signatureReward: "antique-coin",
+  },
+  "embers-table": {
+    id: "embers-table",
+    name: "Embers Table",
+    role: "Late-run high stakes room where collateral and exposed goods both matter",
+    buyIn: 160,
+    risk: "High",
+    heatGain: 2,
+    smallBlind: 25,
+    openBet: 50,
+    raiseIncrement: 50,
+    hands: 3,
+    unlocksAfter: "mirror-hall",
+    opponentIds: ["house-viper", "ash-smuggler"],
+    publicInfo: {
+      buyIn: 160,
+      risk: "High",
+    },
+    hiddenInfo: {
+      rule: "Luxury collateral is live here. If you close the room in profit, the room cools 1 heat before extraction math.",
+      opponents: "House Viper and Ash Smuggler",
+      reward: "The final room pays the heaviest luxury pieces, but it punishes weak exits harder than the others.",
+    },
+    allowCollateral: true,
+    winHeatRelief: 1,
+    baseRewardPool: ["obsidian-idol", "vault-promissory", "emerald-brooch"],
+    signatureReward: "vault-promissory",
   },
 };
 
@@ -87,6 +219,7 @@ export const OPPONENTS = {
     id: "dock-braggart",
     name: "Dock Braggart",
     seatLabel: "Dock Braggart",
+    archetype: "Maniac",
     intro: "Too loud for the cards he is actually holding.",
     profile: {
       aggression: 0.76,
@@ -100,6 +233,7 @@ export const OPPONENTS = {
     id: "ledger-clerk",
     name: "Ledger Clerk",
     seatLabel: "Ledger Clerk",
+    archetype: "Nit",
     intro: "Counts the room twice before he risks one chip.",
     profile: {
       aggression: 0.28,
@@ -113,6 +247,7 @@ export const OPPONENTS = {
     id: "calm-widow",
     name: "Calm Widow",
     seatLabel: "Calm Widow",
+    archetype: "Shark",
     intro: "Patient, precise, and excellent at noticing repetition.",
     profile: {
       aggression: 0.48,
@@ -126,12 +261,69 @@ export const OPPONENTS = {
     id: "smiling-knife",
     name: "Smiling Knife",
     seatLabel: "Smiling Knife",
+    archetype: "Shark",
     intro: "Coasts early, then leans on the table when the pot matters.",
     profile: {
       aggression: 0.5,
       caution: 0.42,
       bluff: 0.12,
       finalHandSpike: 0.24,
+      patternPunish: 0.06,
+    },
+  },
+  "river-shark": {
+    id: "river-shark",
+    name: "River Shark",
+    seatLabel: "River Shark",
+    archetype: "Shark",
+    intro: "Looks passive until the pot starts smelling like a sure thing.",
+    profile: {
+      aggression: 0.5,
+      caution: 0.42,
+      bluff: 0.09,
+      finalHandSpike: 0.06,
+      patternPunish: 0.05,
+    },
+  },
+  "velvet-rook": {
+    id: "velvet-rook",
+    name: "Velvet Rook",
+    seatLabel: "Velvet Rook",
+    archetype: "Calling Station",
+    intro: "Protects small edges and only turns sharp once the room gets narrow.",
+    profile: {
+      aggression: 0.34,
+      caution: 0.6,
+      bluff: 0.1,
+      finalHandSpike: 0.05,
+      patternPunish: 0.07,
+    },
+  },
+  "house-viper": {
+    id: "house-viper",
+    name: "House Viper",
+    seatLabel: "House Viper",
+    archetype: "Shark",
+    intro: "Never looks rushed, but the room tightens when he finally presses.",
+    profile: {
+      aggression: 0.51,
+      caution: 0.5,
+      bluff: 0.08,
+      finalHandSpike: 0.11,
+      patternPunish: 0.08,
+    },
+  },
+  "ash-smuggler": {
+    id: "ash-smuggler",
+    name: "Ash Smuggler",
+    seatLabel: "Ash Smuggler",
+    archetype: "Fish",
+    intro: "Hides under smoke and only shows teeth when the line looks soft.",
+    profile: {
+      aggression: 0.42,
+      caution: 0.46,
+      bluff: 0.15,
+      finalHandSpike: 0.07,
       patternPunish: 0.06,
     },
   },
@@ -160,6 +352,17 @@ export const ITEM_DEFS = {
     heat: 0,
     description: "Read one opponent's current hand pressure as weak, medium, or strong.",
   },
+  "player-notes": {
+    id: "player-notes",
+    name: "Player Notes",
+    kind: "usable",
+    phase: "table",
+    buy: 50,
+    sell: 25,
+    slots: 1,
+    heat: 0,
+    description: "Reveal one opponent's playing style archetype.",
+  },
   "steadying-drink": {
     id: "steadying-drink",
     name: "Steadying Drink",
@@ -181,6 +384,30 @@ export const ITEM_DEFS = {
     slots: 1,
     heat: 0,
     description: "Reveal every hidden layer of one table or refresh the fixed route offer.",
+  },
+  "kitchen-pass": {
+    id: "kitchen-pass",
+    name: "Kitchen Pass",
+    kind: "usable",
+    phase: "search",
+    buy: 45,
+    sell: 20,
+    slots: 1,
+    heat: 0,
+    unlockRoute: "service-stairs",
+    description: "Flash it upstairs to reveal the service stairs extraction line.",
+  },
+  "dock-passkey": {
+    id: "dock-passkey",
+    name: "Dock Passkey",
+    kind: "usable",
+    phase: "search",
+    buy: 55,
+    sell: 25,
+    slots: 1,
+    heat: 0,
+    unlockRoute: "river-launch",
+    description: "Signals a hidden river launch route that never appears on the public board.",
   },
   "false-bottom-wallet": {
     id: "false-bottom-wallet",
@@ -258,32 +485,241 @@ export const ITEM_DEFS = {
     collateral: true,
     description: "A bulky paper prize that pays well if you can carry it out.",
   },
+  "pearl-necklace": {
+    id: "pearl-necklace",
+    name: "Pearl Necklace",
+    kind: "valuable",
+    value: 95,
+    slots: 1,
+    collateral: true,
+    description: "A graceful luxury piece that pawns cleanly in the right room.",
+  },
+  "emerald-brooch": {
+    id: "emerald-brooch",
+    name: "Emerald Brooch",
+    kind: "valuable",
+    value: 125,
+    slots: 1,
+    collateral: true,
+    description: "A rich green piece that holds its nerve as collateral.",
+  },
+  "obsidian-idol": {
+    id: "obsidian-idol",
+    name: "Obsidian Idol",
+    kind: "valuable",
+    value: 150,
+    slots: 2,
+    collateral: true,
+    description: "Heavy, awkward, and worth real money if you can still walk with it.",
+  },
+  "vault-promissory": {
+    id: "vault-promissory",
+    name: "Vault Promissory",
+    kind: "valuable",
+    value: 210,
+    slots: 2,
+    collateral: true,
+    description: "A private-room paper that lenders will honor if the room believes you survived.",
+  },
 };
 
-export const SEARCH_SHOPS = {
-  1: ["marked-lens", "steadying-drink", "disposable-phone"],
-  2: ["signal-lighter", "false-bottom-wallet", "steadying-drink", "sleeve-clip"],
-  3: ["signal-lighter", "steadying-drink", "sleeve-clip"],
+const DEFAULT_SHOP_STOCK = {
+  1: ["marked-lens", "steadying-drink", "kitchen-pass", "player-notes"],
+  2: ["signal-lighter", "false-bottom-wallet", "steadying-drink", "dock-passkey", "player-notes"],
+  3: ["signal-lighter", "disposable-phone", "sleeve-clip", "player-notes", "kitchen-pass"],
+  4: ["marked-lens", "steadying-drink", "dock-passkey", "sleeve-clip", "player-notes"],
+  5: ["signal-lighter", "disposable-phone", "sleeve-clip", "player-notes"],
 };
 
-export const FIXED_ROUTE_POOL = [
-  {
-    id: "kitchen-backlift",
-    name: "Kitchen Backlift",
-    reserveCost: 50,
-    finalCost: 10,
-    maxHeat: 4,
-    flavor: "A flour-dusted runner opens the service gate for one clean exit.",
+export const TAVERN_SHOPS = {
+  "smoky-den": {
+    1: ["marked-lens", "steadying-drink", "kitchen-pass", "player-notes"],
+    2: ["signal-lighter", "false-bottom-wallet", "steadying-drink", "dock-passkey", "player-notes", "sleeve-clip"],
+    3: ["signal-lighter", "disposable-phone", "sleeve-clip", "player-notes", "kitchen-pass"],
+    4: ["marked-lens", "steadying-drink", "dock-passkey", "sleeve-clip", "player-notes"],
+    5: ["signal-lighter", "disposable-phone", "sleeve-clip", "player-notes"],
   },
-  {
-    id: "linen-cart",
-    name: "Linen Cart",
-    reserveCost: 50,
-    finalCost: 10,
-    maxHeat: 4,
-    flavor: "You leave under folded cloth, if the hallway still belongs to the staff.",
+  "high-rise-suite": {
+    1: ["player-notes", "steadying-drink", "false-bottom-wallet", "marked-lens"],
+    2: ["signal-lighter", "player-notes", "dock-passkey", "steadying-drink", "sleeve-clip"],
+    3: ["disposable-phone", "player-notes", "sleeve-clip", "kitchen-pass"],
+    4: ["marked-lens", "player-notes", "false-bottom-wallet", "sleeve-clip"],
+    5: ["signal-lighter", "disposable-phone", "player-notes", "sleeve-clip"],
   },
-];
+  "rooftop-club": {
+    1: ["steadying-drink", "player-notes", "marked-lens", "kitchen-pass"],
+    2: ["signal-lighter", "steadying-drink", "dock-passkey", "player-notes", "sleeve-clip"],
+    3: ["player-notes", "sleeve-clip", "disposable-phone", "kitchen-pass"],
+    4: ["marked-lens", "steadying-drink", "player-notes", "sleeve-clip"],
+    5: ["signal-lighter", "disposable-phone", "player-notes", "sleeve-clip"],
+  },
+  "neon-poker-club": {
+    1: ["marked-lens", "player-notes", "disposable-phone", "steadying-drink"],
+    2: ["signal-lighter", "player-notes", "dock-passkey", "false-bottom-wallet", "sleeve-clip"],
+    3: ["disposable-phone", "sleeve-clip", "player-notes", "kitchen-pass"],
+    4: ["marked-lens", "dock-passkey", "player-notes", "sleeve-clip"],
+    5: ["signal-lighter", "disposable-phone", "player-notes", "sleeve-clip"],
+  },
+};
+
+export const TAVERN_ROUTE_SETS = {
+  "smoky-den": {
+    fixedRoutes: [
+      {
+        id: "kitchen-backlift",
+        name: "Kitchen Backlift",
+        reserveCost: 50,
+        finalCost: 10,
+        maxHeat: 4,
+        flavor: "A flour-dusted runner opens the service gate for one clean exit.",
+      },
+      {
+        id: "linen-cart",
+        name: "Linen Cart",
+        reserveCost: 50,
+        finalCost: 10,
+        maxHeat: 4,
+        flavor: "You leave under folded cloth, if the hallway still belongs to the staff.",
+      },
+    ],
+    specialRoutes: {
+      "service-stairs": {
+        id: "service-stairs",
+        name: "Service Stairs",
+        revealFlag: "serviceStairs",
+        finalCost: 25,
+        maxHeat: 5,
+        flavor: "A kitchen runner holds the stairwell open long enough for a clean exit if you move quickly.",
+      },
+      "river-launch": {
+        id: "river-launch",
+        name: "River Launch",
+        revealFlag: "riverLaunch",
+        finalCost: 40,
+        maxHeat: 4,
+        flavor: "A silent launch waits below the loading docks, but only for someone already holding the right key.",
+      },
+    },
+  },
+  "high-rise-suite": {
+    fixedRoutes: [
+      {
+        id: "vip-elevator",
+        name: "VIP Elevator",
+        reserveCost: 60,
+        finalCost: 20,
+        maxHeat: 4,
+        flavor: "A concierge keeps the service elevator unlocked for one exact descent.",
+      },
+      {
+        id: "laundry-trolley",
+        name: "Laundry Trolley",
+        reserveCost: 55,
+        finalCost: 15,
+        maxHeat: 4,
+        flavor: "You disappear with pressed linens and a bored porter who never asks names.",
+      },
+    ],
+    specialRoutes: {
+      "service-stairs": {
+        id: "service-elevator",
+        name: "Service Elevator",
+        revealFlag: "serviceStairs",
+        finalCost: 30,
+        maxHeat: 5,
+        flavor: "The maintenance shaft only stays open if the kitchen stamp is real.",
+      },
+      "river-launch": {
+        id: "basement-garage",
+        name: "Basement Garage",
+        revealFlag: "riverLaunch",
+        finalCost: 45,
+        maxHeat: 4,
+        flavor: "A quiet car waits under the tower, but only for someone carrying the right coded key.",
+      },
+    },
+  },
+  "rooftop-club": {
+    fixedRoutes: [
+      {
+        id: "staff-door",
+        name: "Staff Door",
+        reserveCost: 45,
+        finalCost: 15,
+        maxHeat: 4,
+        flavor: "A bartender palms you a staff badge and points to the back stairs.",
+      },
+      {
+        id: "valet-loop",
+        name: "Valet Loop",
+        reserveCost: 55,
+        finalCost: 20,
+        maxHeat: 4,
+        flavor: "The valet stand folds you into the traffic before the rooftop buzz catches up.",
+      },
+    ],
+    specialRoutes: {
+      "service-stairs": {
+        id: "emergency-exit",
+        name: "Emergency Exit",
+        revealFlag: "serviceStairs",
+        finalCost: 20,
+        maxHeat: 5,
+        flavor: "A fire stair hidden behind the bottle wall opens only if the stamped pass checks out.",
+      },
+      "river-launch": {
+        id: "helipad-drop",
+        name: "Helipad Drop",
+        revealFlag: "riverLaunch",
+        finalCost: 50,
+        maxHeat: 4,
+        flavor: "A charter pilot takes you off the roof if the access chip still reads green.",
+      },
+    },
+  },
+  "neon-poker-club": {
+    fixedRoutes: [
+      {
+        id: "data-node-gate",
+        name: "Data Node Gate",
+        reserveCost: 50,
+        finalCost: 20,
+        maxHeat: 4,
+        flavor: "A coded maintenance gate blinks open for one clean exit window.",
+      },
+      {
+        id: "hack-door",
+        name: "Hack Door",
+        reserveCost: 60,
+        finalCost: 25,
+        maxHeat: 4,
+        flavor: "A spoofed employee route gives you twenty seconds before the club catches up.",
+      },
+    ],
+    specialRoutes: {
+      "service-stairs": {
+        id: "neural-jammer",
+        name: "Neural Jammer Corridor",
+        revealFlag: "serviceStairs",
+        finalCost: 30,
+        maxHeat: 5,
+        flavor: "A dead sensor lane appears only when the right utility token trips the jammer.",
+      },
+      "river-launch": {
+        id: "quantum-portal",
+        name: "Quantum Portal",
+        revealFlag: "riverLaunch",
+        finalCost: 55,
+        maxHeat: 4,
+        flavor: "The back-end portal only resolves for runners carrying a synced dock key.",
+      },
+    },
+  },
+};
+
+export const SEARCH_SHOPS = DEFAULT_SHOP_STOCK;
+export const FIXED_ROUTE_POOL = TAVERN_ROUTE_SETS["smoky-den"].fixedRoutes;
+export const SPECIAL_EXTRACTION_ROUTES = TAVERN_ROUTE_SETS["smoky-den"].specialRoutes;
 
 export function getItemDef(itemId) {
   return ITEM_DEFS[itemId];
@@ -297,8 +733,25 @@ export function getTableDef(tableId) {
   return TABLES[tableId];
 }
 
-export function getShopStock(searchIndex) {
-  return SEARCH_SHOPS[searchIndex] ?? SEARCH_SHOPS[3];
+export function getTavernSceneDef(sceneId) {
+  return TAVERN_SCENES[sceneId];
+}
+
+export function getShopStock(searchIndex, sceneId = "smoky-den") {
+  const sceneStock = TAVERN_SHOPS[sceneId] ?? DEFAULT_SHOP_STOCK;
+  return sceneStock[searchIndex] ?? sceneStock[3] ?? DEFAULT_SHOP_STOCK[3];
+}
+
+export function getFixedRoutePool(sceneId = "smoky-den") {
+  return TAVERN_ROUTE_SETS[sceneId]?.fixedRoutes ?? FIXED_ROUTE_POOL;
+}
+
+export function getSpecialExtractionRoutes(sceneId = "smoky-den") {
+  return TAVERN_ROUTE_SETS[sceneId]?.specialRoutes ?? SPECIAL_EXTRACTION_ROUTES;
+}
+
+export function getSpecialExtractionRoute(sceneId = "smoky-den", routeKey) {
+  return getSpecialExtractionRoutes(sceneId)?.[routeKey] ?? null;
 }
 
 export function getHeatBand(heat) {

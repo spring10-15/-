@@ -180,6 +180,9 @@ body {
 
 .scene-action-dock,
 .summary-action-dock {
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
   position: relative;
   z-index: 2;
   display: flex;
@@ -219,7 +222,7 @@ body {
 .scene-hotspot:hover,
 .scene-hotspot:focus-visible,
 .scene-hotspot:active {
-  transform: translate(var(--float-x, -50%), var(--float-y, -50%));
+  transform: translate(var(--float-x, -50%), var(--float-y, -50%)) !important;
 }
 
 .search-shell .first-person-frame,
@@ -242,24 +245,27 @@ body {
 .table-play-surface {
   position: relative;
   z-index: 1;
-  min-height: 0;
+  min-height: clamp(248px, 35vh, 300px);
   display: grid;
   grid-template-rows: auto 1fr auto;
-  align-content: center;
+  align-content: start;
   justify-items: center;
   gap: 10px;
-  padding: 0 14px;
+  padding: 0 14px 8px;
 }
 
-.table-inline-log-card {
+.table-shell > .table-inline-log-card {
   position: absolute;
-  left: clamp(10px, 1vw, 18px);
-  bottom: clamp(-172px, -13vh, -112px);
-  z-index: 2;
+  left: clamp(12px, 1.6vw, 22px);
+  top: clamp(420px, 62vh, 500px);
+  bottom: auto;
+  z-index: 4;
   display: grid;
   gap: 6px;
-  width: clamp(230px, 19vw, 286px);
-  padding: 12px 14px;
+  width: clamp(170px, 17vw, 220px);
+  max-height: 126px;
+  overflow: hidden;
+  padding: 9px 11px;
   border: 1px solid rgba(255, 240, 214, 0.12);
   border-radius: 18px;
   background:
@@ -270,9 +276,11 @@ body {
   pointer-events: none;
 }
 
-.table-inline-log-stack {
+.table-shell > .table-inline-log-card .table-inline-log-stack {
   display: grid;
   gap: 6px;
+  max-height: 76px;
+  overflow: hidden;
 }
 
 .table-seat-tag-row {
@@ -327,6 +335,17 @@ body {
   color: rgba(255, 245, 221, 0.88);
 }
 
+.opponent-banter {
+  display: block;
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 240, 214, 0.14);
+  color: rgba(250, 229, 181, 0.92);
+  font-size: 0.66rem;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+}
+
 .hand-summary-reveal-stack {
   display: grid;
   gap: 4px;
@@ -351,6 +370,20 @@ body {
   transform: none;
   border-color: rgba(255, 240, 214, 0.24);
   box-shadow: none;
+}
+
+.table-seat-tag.testing {
+  border-color: rgba(224, 176, 94, 0.34);
+}
+
+.table-seat-tag.tense {
+  border-color: rgba(173, 61, 75, 0.48);
+  background: rgba(38, 13, 17, 0.38);
+}
+
+.table-seat-tag .tell {
+  color: rgba(210, 197, 170, 0.7);
+  font-style: italic;
 }
 
 .table-felt-focus {
@@ -402,15 +435,16 @@ body {
   display: grid;
   width: min(640px, 100%);
   justify-self: center;
-  gap: 6px;
-  margin-top: -10px;
-  padding-bottom: 4px;
+  gap: 8px;
+  margin-top: clamp(24px, 4.8vh, 54px);
+  padding-bottom: 10px;
 }
 
 .table-player-hand-shell {
   display: grid;
   justify-items: center;
   width: 100%;
+  margin-top: 0;
 }
 
 .table-player-hand-shell .card-row {
@@ -427,7 +461,7 @@ body {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 8px 12px;
+  padding: 10px 12px;
   border: 1px solid rgba(255, 240, 214, 0.12);
   border-radius: 16px;
   background: rgba(7, 9, 13, 0.3);
@@ -557,8 +591,8 @@ body {
   width: 100%;
   margin: 0 auto;
   display: grid;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 6px;
+  padding: 8px 10px;
   border: 1px solid rgba(255, 240, 214, 0.1);
   border-radius: 16px;
   background:
@@ -585,7 +619,21 @@ body {
 .table-button-row button,
 .table-item-row button {
   min-width: 0;
-  min-height: 46px;
+  min-height: 38px;
+}
+
+.table-item-status-strip {
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+.table-item-status-grid {
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 6px;
+}
+
+.table-item-status-card {
+  padding: 7px 8px;
 }
 
 .single-action-row {
@@ -999,11 +1047,20 @@ body {
   z-index: 2;
   align-self: center;
   justify-self: center;
-  width: min(880px, 100%);
-  padding: 20px 22px;
-  border-radius: 24px;
+  width: min(680px, calc(100% - 56px));
+  padding: 16px 18px;
+  border-radius: 20px;
   display: grid;
-  gap: 14px;
+  gap: 12px;
+}
+
+.summary-shell .outsider-frame {
+  display: none;
+}
+
+.summary-main-shell .summary-action-dock {
+  padding-top: 4px;
+  padding-bottom: 0;
 }
 
 .summary-main-shell.success {
@@ -1024,7 +1081,7 @@ body {
 .summary-main-head h1 {
   margin: 4px 0 0;
   font-family: var(--display-font);
-  font-size: clamp(1.7rem, 4vw, 2.5rem);
+  font-size: clamp(1.45rem, 3.2vw, 2.05rem);
   line-height: 1.04;
 }
 
@@ -1054,7 +1111,7 @@ body {
 }
 
 .summary-stat-row .compact-stat-chip {
-  flex: 1 1 170px;
+  flex: 1 1 145px;
 }
 
 .summary-text-block {
@@ -1209,6 +1266,40 @@ body {
   display: none;
 }
 
+.playing-card.image-failed {
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+}
+
+.playing-card.image-failed .rank,
+.playing-card.image-failed .suit {
+  position: relative;
+  z-index: 2;
+  display: block;
+  text-align: center;
+}
+
+.playing-card.image-failed .rank {
+  font-size: clamp(1.35rem, 2.2vw, 2rem);
+  font-weight: 700;
+  color: rgba(19, 14, 10, 0.92);
+}
+
+.playing-card.image-failed .suit {
+  font-size: clamp(0.95rem, 1.6vw, 1.2rem);
+  font-weight: 700;
+  color: rgba(19, 14, 10, 0.78);
+}
+
+.playing-card.image-failed .suit.red {
+  color: rgba(152, 18, 18, 0.9);
+}
+
+.playing-card.image-failed .suit.black {
+  color: rgba(16, 16, 16, 0.88);
+}
+
 .playing-card.back {
   background: none;
 }
@@ -1234,6 +1325,76 @@ body {
 
   .table-prize-strip {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-height: 760px) {
+  .fixed-scene-shell {
+    gap: 6px;
+  }
+
+  .table-play-surface {
+    min-height: 224px;
+    gap: 6px;
+    padding-bottom: 0;
+  }
+
+  .board-felt-shell {
+    padding: 6px 8px;
+  }
+
+  .table-board-head {
+    margin-bottom: 6px;
+  }
+
+  .board-card-row .playing-card {
+    width: clamp(44px, 4.6vw, 60px);
+  }
+
+  .table-command-dock {
+    width: min(620px, 100%);
+    gap: 6px;
+    margin-top: clamp(8px, 2vh, 22px);
+    padding-bottom: 6px;
+  }
+
+  .table-player-hand-shell .playing-card {
+    width: clamp(64px, 6vw, 82px);
+  }
+
+  .table-player-summary {
+    padding: 8px 10px;
+  }
+
+  .table-action-bar-shell {
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  .table-action-status .micro {
+    display: none;
+  }
+
+  .table-item-status-strip {
+    gap: 5px;
+    padding: 5px 7px;
+  }
+
+  .table-item-status-card {
+    padding: 6px 8px;
+  }
+
+  .table-button-row button,
+  .table-item-row button {
+    min-height: 36px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .table-shell > .table-inline-log-card {
+    top: clamp(390px, 60vh, 470px);
+    width: clamp(150px, 18vw, 200px);
+    padding: 8px 10px;
   }
 }
 
