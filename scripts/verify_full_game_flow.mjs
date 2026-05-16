@@ -460,6 +460,7 @@ scenario("general extraction enforces heat and fee rules", () => {
   game.dispatch("extract-general");
   assert(game.state.mode === "summary", "a broke general extraction with no other outs should collapse into failure");
   assert(game.state.latestSummary.success === false, "the dead-end extraction branch should resolve as a failed run");
+  assert(game.state.latestSummary.caught === true, "dead-end extraction failure should be tracked as a caught run");
 });
 
 scenario("general extraction settles once the public line is live and the fee is covered", () => {
@@ -504,6 +505,7 @@ scenario("failure summary salvages cash only when the wallet is present", () => 
   noWallet.game.dispatch("gather-intel", { tableId: "cargo-table", layer: "rule" });
   assert(noWallet.game.state.mode === "summary", "dead-end run should fail into summary");
   assert(noWallet.game.state.latestSummary.salvaged === 0, "failure should salvage nothing without the wallet");
+  assert(noWallet.game.state.latestSummary.seizedCash === 5, "failure should record seized carried cash");
 
   const withWallet = freshRun();
   withWallet.game.state.run.cashOnHand = 5;
@@ -511,6 +513,7 @@ scenario("failure summary salvages cash only when the wallet is present", () => 
   withWallet.game.dispatch("gather-intel", { tableId: "cargo-table", layer: "rule" });
   assert(withWallet.game.state.mode === "summary", "dead-end run should still fail with the wallet");
   assert(withWallet.game.state.latestSummary.salvaged === 5, "wallet should salvage up to the carried cash");
+  assert(withWallet.game.state.latestSummary.seizedCash === 0, "wallet-protected cash should not be counted as seized");
 });
 
 scenario("mirror hall stays locked until cargo clears and insufficient cash blocks table entry", () => {

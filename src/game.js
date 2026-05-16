@@ -159,7 +159,7 @@ export function createGame() {
       return "";
     }
     if (participant.id === "player") {
-      return currentLanguage() === "zh" ? "你" : "You";
+      return msg("playerNameYou");
     }
     return (
       getLocalizedOpponent(participant.archetypeId ?? participant.id, currentLanguage())?.name ??
@@ -187,7 +187,7 @@ export function createGame() {
   }
 
   function prettyCards(cards = []) {
-    return cards.map((card) => prettyCard(card)).join(currentLanguage() === "zh" ? "、" : ", ");
+    return cards.map((card) => prettyCard(card)).join(msg("cardListSeparator"));
   }
 
   function notify(text) {
@@ -390,7 +390,7 @@ export function createGame() {
         nextKnownOpponents[participant.id] = {
           ...previous,
           sessionNotes,
-          memorySummary: sessionNotes.slice(0, 3).join(currentLanguage() === "zh" ? "；" : "; "),
+          memorySummary: sessionNotes.slice(0, 3).join(msg("memorySeparator")),
           reputationTowardPlayer: Math.max(
             -100,
             Math.min(100, (previous.reputationTowardPlayer ?? 0) + compressed.reputationDelta),
@@ -658,6 +658,9 @@ export function createGame() {
       case "player-all-in":
         takePlayerTableAction(action.replace("player-", ""));
         break;
+      case "player-raise-to":
+        takePlayerTableAction("raise", payload?.raiseTarget);
+        break;
       case "use-table-item":
         useTableItem(payload.instanceId, payload.targetId ?? null);
         break;
@@ -678,11 +681,7 @@ export function createGame() {
     }
 
     if (state.run && state.mode === "search") {
-      maybeFailRun(
-        currentLanguage() === "zh"
-          ? "整层楼开始收口了，你不能再继续拖下去。"
-          : "The floor is closing in. You cannot afford to stall any longer.",
-      );
+      maybeFailRun(msg("floorClosingIn"));
     }
 
     saveRunSnapshot();
@@ -812,8 +811,8 @@ export function createGame() {
     run.heat = Math.max(0, run.heat - 1);
     run.phase.heatReduced = true;
     run.actionPoints -= 1;
-    pushRunLog(run, currentLanguage() === "zh" ? `花了 ${cost} 压低风声。` : `Paid ${cost} to cool the heat.` );
-    notify(currentLanguage() === "zh" ? `风声降低了，花费 ${cost}。` : `Heat reduced for ${cost}.`);
+    pushRunLog(run, msg("paidToReduceHeat", { cost }));
+    notify(msg("heatReducedForCost", { cost }));
   }
 
   function reserveFixedRoute() {
@@ -907,11 +906,11 @@ export function createGame() {
       const scene = getRunSceneDef(run);
       const revealFlag = route?.revealFlag;
       if (!route || !revealFlag) {
-        notify(currentLanguage() === "zh" ? "这条隐线现在接不上。" : "That hidden route is not available here.");
+        notify(msg("hiddenRouteUnavailable"));
         return;
       }
       if (run.routeIntel?.[revealFlag]) {
-        notify(currentLanguage() === "zh" ? "这条隐线已经摸清了。" : "That hidden route is already known.");
+        notify(msg("hiddenRouteAlreadyKnown"));
         return;
       }
       run.routeIntel[revealFlag] = true;
@@ -925,15 +924,9 @@ export function createGame() {
       removeInventoryItem(run, inventoryItem.id);
       pushRunLog(
         run,
-        currentLanguage() === "zh"
-          ? `用了 ${itemName(inventoryItem.itemId)}，探出了 ${routeName(route)}。`
-          : `Used ${itemName(inventoryItem.itemId)} and revealed ${routeName(route)}.`,
+        msg("usedItemRevealedRoute", { item: itemName(inventoryItem.itemId), route: routeName(route) }),
       );
-      notify(
-        currentLanguage() === "zh"
-          ? `新撤离线已出现：${routeName(route)}`
-          : `New route unlocked: ${routeName(route)}`,
-      );
+      notify(msg("newRouteUnlocked", { route: routeName(route) }));
     }
   }
 
@@ -986,7 +979,7 @@ export function createGame() {
     let forcedReason = run.forcedExtractionReason ?? null;
 
     if (type === "general") {
-      routeLabel = currentLanguage() === "zh" ? "公开撤离" : "General Extraction";
+      routeLabel = msg("generalExtractionLabel");
       if (!run.routeIntel.publicExit) {
         notify(msg("noPublicExitLead"));
         return;
@@ -1007,7 +1000,7 @@ export function createGame() {
       costs.push(msg("generalExtractionFee", { fee }));
     } else if (type === "fixed") {
       const route = run.fixedRouteReservation;
-      routeLabel = routeName(route) || (currentLanguage() === "zh" ? "固定路线" : "Fixed Route");
+      routeLabel = routeName(route) || msg("fixedRouteLabel");
       if (!run.routeIntel.fixedWhisper) {
         notify(msg("noFixedRouteLead"));
         return;
@@ -1031,7 +1024,7 @@ export function createGame() {
       settledCash -= route.finalCost;
       costs.push(msg("fixedRouteHandoff", { route: routeName(route), fee: route.finalCost }));
     } else if (type === "dropbag-cash") {
-      routeLabel = currentLanguage() === "zh" ? "紧急撤离 / 丢现金" : "Drop-Bag / Cash";
+      routeLabel = msg("dropBagCashLabel");
       if (!run.routeIntel.emergency) {
         notify(msg("noEmergencyExitLead"));
         return;
@@ -1045,7 +1038,7 @@ export function createGame() {
       costs.push(msg("dropBagFee"));
       costs.push(msg("dropBagCashLoss", { amount: sacrificed }));
     } else if (type === "dropbag-valuables") {
-      routeLabel = currentLanguage() === "zh" ? "紧急撤离 / 丢货" : "Drop-Bag / Valuables";
+      routeLabel = msg("dropBagValuablesLabel");
       if (!run.routeIntel.emergency) {
         notify(msg("noEmergencyExitLead"));
         return;
@@ -1065,7 +1058,7 @@ export function createGame() {
     } else if (type === "service-stairs" || type === "river-launch") {
       const route = getRunSpecialRoute(type, run);
       const revealFlag = route?.revealFlag;
-      routeLabel = routeName(route) || (currentLanguage() === "zh" ? "隐藏路线" : "Hidden Route");
+      routeLabel = routeName(route) || msg("hiddenRouteLabel");
       if (!revealFlag || !run.routeIntel?.[revealFlag]) {
         notify(msg("noFixedRouteLead"));
         return;
@@ -1079,7 +1072,7 @@ export function createGame() {
         return;
       }
       settledCash -= route.finalCost;
-      costs.push(currentLanguage() === "zh" ? `${routeName(route)} / ${route.finalCost}` : `${routeName(route)} / ${route.finalCost}`);
+      costs.push(msg("routeCostLine", { route: routeName(route), cost: route.finalCost }));
     } else {
       return;
     }
@@ -1207,9 +1200,7 @@ export function createGame() {
     savePersistent();
     const failureReason =
       run.heat >= 6
-        ? currentLanguage() === "zh"
-          ? "风声封死了楼层，你在出口前被按住了。"
-          : "Lockdown heat sealed the floor and you were grabbed before the exit."
+        ? msg("lockdownFailure")
         : reason;
     state.latestSummary = {
       success: false,
@@ -1265,7 +1256,7 @@ export function createGame() {
     notify(failureReason);
   }
 
-  function takePlayerTableAction(kind) {
+  function takePlayerTableAction(kind, raiseTarget) {
     if (state.mode !== "table" || !state.run?.currentTable) {
       return;
     }
@@ -1279,7 +1270,9 @@ export function createGame() {
       notify(msg("illegalAction"));
       return;
     }
-    applyTableAction(table, table.players[0], kind);
+    // Cancel any queued AI beat to prevent double-triggering progressTable
+    clearTableBeat();
+    applyTableAction(table, table.players[0], kind, raiseTarget);
   }
 
   function continueTable() {
@@ -1370,7 +1363,7 @@ export function createGame() {
     }
     if (item.itemId === "player-notes") {
       if (!targetId) {
-        notify(currentLanguage() === "zh" ? "选择一名对手再使用玩家笔记。" : "Pick an opponent before using Player Notes.");
+        notify(msg("pickOpponentForNotes"));
         return;
       }
       const target = table.players.find((player) => player.id === targetId);
@@ -1385,17 +1378,13 @@ export function createGame() {
       removeInventoryItem(run, instanceId);
       pushTableLog(
         table,
-        currentLanguage() === "zh"
-          ? `你翻开玩家笔记，确认 ${actorName(target)} 是 ${msg(opponent.archetype)}。`
-          : `You open the notes and confirm ${actorName(target)} is a ${msg(opponent.archetype)}.`,
+        msg("notesConfirmLog", { target: actorName(target), archetype: msg(opponent.archetype) }),
       );
       setStageCue(
         table,
         "cool",
         itemName(item.itemId),
-        currentLanguage() === "zh"
-          ? `${actorName(target)} 的标签已记录：${msg(opponent.archetype)}。`
-          : `${actorName(target)} is logged as ${msg(opponent.archetype)}.`,
+        msg("notesConfirmCue", { target: actorName(target), archetype: msg(opponent.archetype) }),
       );
       return;
     }
@@ -1470,7 +1459,7 @@ export function createGame() {
     }
   }
 
-  function applyTableAction(table, participant, kind) {
+  function applyTableAction(table, participant, kind, raiseTarget) {
     table.turnCounter += 1;
     const callCost = Math.max(0, table.currentBet - participant.currentBet);
     const actorLabel = actorName(participant);
@@ -1525,17 +1514,37 @@ export function createGame() {
 
     if (kind === "raise") {
       const isOpen = table.currentBet === 0;
-      const targetBet = isOpen ? table.tableDef.openBet : table.currentBet + table.tableDef.raiseIncrement;
+      const defaultTarget = isOpen ? table.tableDef.openBet : table.currentBet + table.tableDef.raiseIncrement;
+      const targetBet = raiseTarget != null ? Math.max(defaultTarget, raiseTarget) : defaultTarget;
       let cost = targetBet - participant.currentBet;
       if (table.firstAggressionDiscountAvailable) {
         cost = Math.max(0, cost - 10);
         table.firstAggressionDiscountAvailable = false;
       }
       if (participant.stack <= cost) {
-        participant.folded = true;
-        rememberLastAction(participant, "fold");
-        pushTableLog(table, msg("actorCannotCoverCallFolds", { actor: actorLabel }));
-        afterAction(table, participant, "fold");
+        // Cannot cover the raise — downgrade to all-in instead of folding
+        const allInCost = participant.stack;
+        const allInTarget = participant.currentBet + allInCost;
+        const reopens = allInTarget > table.currentBet;
+        addCommittedChips(table, participant, allInCost);
+        if (reopens) {
+          table.currentBet = allInTarget;
+          table.raiseUsed = true;
+        }
+        rememberLastAction(participant, "all-in");
+        if (participant.id === "player") {
+          rememberPlayerActionPattern(table, "all-in");
+          refreshOpponentBanter(table, "player-all-in");
+        } else {
+          refreshOpponentBanter(table, "actor-all-in", participant);
+        }
+        pushTableLog(
+          table,
+          reopens
+            ? msg("actorShoves", { actor: actorLabel, amount: allInTarget })
+            : msg("actorShovesShort", { actor: actorLabel, amount: allInTarget }),
+        );
+        afterAction(table, participant, "all-in", reopens);
         return;
       }
       addCommittedChips(table, participant, cost);
@@ -1699,7 +1708,13 @@ export function createGame() {
     }
     const winner = survivors[0];
     if (winner.id === "player" && (table.playerPattern.aggressiveActions ?? 0) > 0) {
-      table.playerPattern.bluffWins += 1;
+      // Only count as bluff if hand strength is weak (high card or less)
+      const allCards = [...table.players[0].holeCards, ...table.community];
+      const handStrength = allCards.length >= 2 ? evaluateBestHand(allCards.length >= 5 ? allCards : allCards) : null;
+      const isWeakHand = !handStrength || handStrength.rank <= 0;
+      if (isWeakHand) {
+        table.playerPattern.bluffWins += 1;
+      }
     }
     const winnerTake = table.pot;
     winner.stack += table.pot;
@@ -1792,7 +1807,7 @@ export function createGame() {
       primaryPot?.handName ??
       (contenders[0] ? localizeHandName(contenders[0].hand.name, currentLanguage()) : null);
     const text = msg("showdownLine", {
-      winners: primaryWinnerNames.join(currentLanguage() === "zh" ? " 和 " : " and "),
+      winners: primaryWinnerNames.join(msg("andSeparator")),
       hand: primaryHand,
     });
     pushTableLog(table, text);
@@ -1835,7 +1850,7 @@ export function createGame() {
       .map((id) => contenderMap.get(id))
       .filter(Boolean)
       .map((entry) => actorName(entry.player))
-      .join(currentLanguage() === "zh" ? " 和 " : " and ");
+      .join(msg("andSeparator"));
   }
 
   function finishHand(table, winnerIds) {
@@ -1900,9 +1915,7 @@ export function createGame() {
         run.heat = Math.max(0, run.heat - table.tableDef.winHeatRelief);
         pushRunLog(
           run,
-          currentLanguage() === "zh"
-            ? `${tableName(table.tableDef)} 盈利收桌，房间风声降低 ${table.tableDef.winHeatRelief}。`
-            : `${tableName(table.tableDef)} cooled Heat by ${table.tableDef.winHeatRelief} after a profitable close.`,
+          msg("tableCooledHeat", { table: tableName(table.tableDef), relief: table.tableDef.winHeatRelief }),
         );
       }
     }
@@ -2064,9 +2077,7 @@ export function createGame() {
     if (run.directorRead.style !== "unknown") {
       pushRunLog(
         run,
-        currentLanguage() === "zh"
-          ? `牌局经理记住了你的风格：${run.directorRead.label}。`
-          : `The floor remembers your style: ${run.directorRead.label}.`,
+        msg("directorRemembersStyle", { label: run.directorRead.label }),
       );
     }
     return run;
@@ -2097,15 +2108,15 @@ export function createGame() {
       { bluffWins: 0, aggression: 0, folds: 0 },
     );
     if (totals.bluffWins >= 2) {
-      return { style: "bluffer", label: currentLanguage() === "zh" ? "爱诈唬" : "Bluff-heavy" };
+      return { style: "bluffer", label: msg("styleBluffer") };
     }
     if (totals.aggression >= 8) {
-      return { style: "reckless", label: currentLanguage() === "zh" ? "压迫型" : "Pressure-heavy" };
+      return { style: "reckless", label: msg("styleReckless") };
     }
     if (totals.folds >= 5 && totals.folds > totals.aggression) {
-      return { style: "tight", label: currentLanguage() === "zh" ? "谨慎型" : "Careful" };
+      return { style: "tight", label: msg("styleTight") };
     }
-    return { style: "unknown", label: currentLanguage() === "zh" ? "未定型" : "Unsettled" };
+    return { style: "unknown", label: msg("styleUnknown") };
   }
 
   function enterFloor() {
@@ -2171,31 +2182,13 @@ export function createGame() {
       crackdownWarned: Boolean(run.pressureFlags?.crackdownWarned),
     };
     if (run.heat >= 4 && !run.pressureFlags.tailedWarned) {
-      pushRunLog(
-        run,
-        currentLanguage() === "zh"
-          ? "门口开始记住你的脸了，路线准备会越来越重要。"
-          : "The floor is starting to remember your face. Prepared exits matter now.",
-      );
-      notify(
-        currentLanguage() === "zh"
-          ? "风声开始追着你走。"
-          : "Heat is starting to follow you.",
-      );
+      pushRunLog(run, msg("tailedWarnLog"));
+      notify(msg("tailedWarnNotify"));
       run.pressureFlags.tailedWarned = true;
     }
     if (run.heat >= 5 && !run.pressureFlags.crackdownWarned) {
-      pushRunLog(
-        run,
-        currentLanguage() === "zh"
-          ? "正门已经不再安全，只剩准备好的线还能碰。"
-          : "The front exit is no longer safe. Only prepared lines remain.",
-      );
-      notify(
-        currentLanguage() === "zh"
-          ? "正门封死了，只能走准备好的线。"
-          : "Front exit compromised. Only prepared lines remain.",
-      );
+      pushRunLog(run, msg("crackdownWarnLog"));
+      notify(msg("crackdownWarnNotify"));
       run.pressureFlags.crackdownWarned = true;
     }
   }
@@ -2205,7 +2198,7 @@ export function createGame() {
       {
         id: "player",
         seatIndex: 0,
-        name: currentLanguage() === "zh" ? "你" : "You",
+        name: msg("playerNameYou"),
         stack: tableDef.buyIn,
         holeCards: [],
         currentBet: 0,
@@ -2539,28 +2532,10 @@ export function createGame() {
     };
   }
 
-  function projectStashNet(amount) {
-    let remaining = amount;
-    let fee = 0;
-    if (remaining <= 0) {
-      return { gross: 0, net: 0, fee: 0 };
-    }
-    const tierOne = Math.min(remaining, 100);
-    fee += Math.floor(tierOne * 0.2);
-    remaining -= tierOne;
-    if (remaining > 0) {
-      const tierTwo = Math.min(remaining, 150);
-      fee += Math.floor(tierTwo * 0.3);
-      remaining -= tierTwo;
-    }
-    if (remaining > 0) {
-      fee += Math.floor(remaining * 0.4);
-    }
-    return {
-      gross: amount,
-      net: amount - fee,
-      fee,
-    };
+  // projectStashNet removed — stash cash mechanic is no longer active (stashedCash is always 0).
+  // Kept as a no-op stub so any stale external call returns a safe zero object.
+  function projectStashNet(_amount) {
+    return { gross: 0, net: 0, fee: 0 };
   }
 
   function rotateFixedRoute(currentRoute) {
@@ -2722,17 +2697,13 @@ export function createGame() {
       plans.push({ type: "general", total: Math.max(0, run.cashOnHand - fee) });
     }
     if (!plans.length) {
-      maybeFailRun(
-        currentLanguage() === "zh"
-          ? "风声炸穿了整层楼，你没来得及撤离。"
-          : "Heat blew the floor wide open before you could get out.",
-      );
+      maybeFailRun(msg("heatBlewFloor"));
       return;
     }
     plans.sort((left, right) => right.total - left.total);
     run.forcedExtractionPending = true;
     run.forcedExtractionReason = "lockdown";
-    notify(currentLanguage() === "zh" ? "风声封楼，正在强制撤离。" : "Lockdown heat. Forced extraction triggered.");
+    notify(msg("lockdownForcedExtraction"));
     attemptExtraction(plans[0].type);
   }
 
@@ -2793,6 +2764,16 @@ export function createGame() {
     startRun,
     resetProgress,
     projectStashNet: (amount) => projectStashNet(amount),
+    getRaiseRange: () => {
+      const table = state.run?.currentTable;
+      if (!table) return null;
+      const player = table.players[0];
+      const isOpen = table.currentBet === 0;
+      const minTarget = isOpen ? table.tableDef.openBet : table.currentBet + table.tableDef.raiseIncrement;
+      const maxTarget = player.currentBet + player.stack;
+      if (maxTarget < minTarget) return null;
+      return { min: minTarget, max: maxTarget, pot: table.pot, currentBet: table.currentBet };
+    },
     getState: () => state,
     getMode: () => state.mode,
     getHeatBand,

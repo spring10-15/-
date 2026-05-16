@@ -35,6 +35,7 @@ class CanvasVideoBackgroundManager {
     this.enabled = false;
     this.availableKeys = new Set();
     this.availableFiles = new Map();
+    this.versionToken = "";
     this.loadManifest();
   }
 
@@ -100,7 +101,7 @@ class CanvasVideoBackgroundManager {
       return null;
     }
 
-    const entry = new VideoEntry(key, filename, this.baseUrl);
+    const entry = new VideoEntry(key, filename, this.baseUrl, this.versionToken);
     this.cache.set(key, entry);
     return entry;
   }
@@ -145,6 +146,7 @@ class CanvasVideoBackgroundManager {
       const manifest = await response.json();
       this.enabled = Boolean(manifest.enabled);
       this.availableKeys = new Set(Array.isArray(manifest.available) ? manifest.available : []);
+      this.versionToken = typeof manifest.updatedAt === "string" ? manifest.updatedAt : "";
       const files = manifest.files && typeof manifest.files === "object" ? manifest.files : {};
       this.availableFiles = new Map(
         [...this.availableKeys]
@@ -162,6 +164,7 @@ class CanvasVideoBackgroundManager {
       this.enabled = false;
       this.availableKeys = new Set();
       this.availableFiles = new Map();
+      this.versionToken = "";
     } finally {
       this.manifestLoaded = true;
     }
@@ -169,10 +172,11 @@ class CanvasVideoBackgroundManager {
 }
 
 class VideoEntry {
-  constructor(key, filename, baseUrl) {
+  constructor(key, filename, baseUrl, versionToken = "") {
     this.key = key;
     this.filename = filename;
     this.baseUrl = baseUrl;
+    this.versionToken = versionToken;
     this.failed = false;
     this.video = document.createElement("video");
     this.video.muted = true;
@@ -208,7 +212,8 @@ class VideoEntry {
   }
 
   applySource() {
-    this.video.src = `${this.baseUrl}${this.filename}`;
+    const version = this.versionToken ? `?v=${encodeURIComponent(this.versionToken)}` : "";
+    this.video.src = `${this.baseUrl}${this.filename}${version}`;
     this.video.load();
   }
 }

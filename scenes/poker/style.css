@@ -338,3 +338,268 @@
     left: auto;
   }
 }
+
+/* ── Raise slider control strip ── */
+
+.raise-control-strip {
+  background: rgba(255, 227, 173, 0.06);
+  border: 1px solid rgba(255, 227, 173, 0.15);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.raise-control-strip .raise-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 227, 173, 0.7);
+}
+
+.raise-presets {
+  display: flex;
+  gap: 6px;
+}
+
+.raise-preset-btn {
+  background: rgba(255, 227, 173, 0.1);
+  border: 1px solid rgba(255, 227, 173, 0.2);
+  border-radius: 6px;
+  color: rgba(255, 227, 173, 0.85);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.raise-preset-btn:hover {
+  background: rgba(255, 227, 173, 0.18);
+  border-color: rgba(255, 227, 173, 0.4);
+}
+
+.raise-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.raise-bound {
+  font-size: 11px;
+  color: rgba(255, 227, 173, 0.5);
+  white-space: nowrap;
+  min-width: 36px;
+}
+
+.raise-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 227, 173, 0.15);
+  outline: none;
+}
+
+.raise-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffe3ad;
+  box-shadow: 0 0 6px rgba(255, 227, 173, 0.4);
+  cursor: pointer;
+  border: 2px solid rgba(9, 5, 7, 0.6);
+  transition: box-shadow 0.15s;
+}
+
+.raise-slider::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 12px rgba(255, 227, 173, 0.7);
+}
+
+.raise-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffe3ad;
+  box-shadow: 0 0 6px rgba(255, 227, 173, 0.4);
+  cursor: pointer;
+  border: 2px solid rgba(9, 5, 7, 0.6);
+}
+
+.raise-commit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.raise-current-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffe3ad;
+  letter-spacing: -0.02em;
+}
+
+.raise-confirm-btn {
+  min-width: 90px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* ── Collapsible hand log ── */
+
+.log-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  pointer-events: auto;
+}
+
+.log-toggle-btn .eyebrow {
+  pointer-events: none;
+}
+
+.log-toggle-icon {
+  font-size: 0.7rem;
+  color: rgba(255, 227, 173, 0.5);
+  transition: transform 200ms ease;
+}
+
+.table-inline-log-stack {
+  transition: max-height 240ms ease, opacity 200ms ease;
+}
+
+.table-inline-log-stack.collapsed {
+  max-height: 0 !important;
+  opacity: 0;
+  overflow: hidden;
+  margin-top: 0;
+}
+
+/* Keep the table action dock playable on laptop-height viewports. */
+.scene-layer.scene-table .table-action-bar-shell {
+  width: min(720px, calc(100% - 220px));
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.scene-layer.scene-table .table-action-status {
+  gap: 2px;
+}
+
+.scene-layer.scene-table .table-action-status .micro {
+  line-height: 1.45;
+}
+
+.scene-layer.scene-table .table-item-status-strip {
+  padding: 7px 9px;
+  gap: 6px;
+}
+
+.scene-layer.scene-table .raise-control-strip {
+  grid-template-columns: auto minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 7px 10px;
+  margin-bottom: 2px;
+  padding: 7px 9px;
+}
+
+.scene-layer.scene-table .raise-control-strip .raise-label {
+  grid-column: 1;
+}
+
+.scene-layer.scene-table .raise-presets {
+  grid-column: 2;
+  justify-content: center;
+}
+
+.scene-layer.scene-table .raise-slider-row {
+  grid-column: 1 / 4;
+}
+
+.scene-layer.scene-table .raise-commit-row {
+  grid-column: 3;
+  justify-content: end;
+  gap: 6px;
+}
+
+.scene-layer.scene-table .raise-confirm-btn {
+  min-height: 32px;
+  padding: 6px 14px;
+}
+
+@media (max-height: 820px) {
+  .scene-layer.scene-table .table-action-status .micro,
+  .scene-layer.scene-table .table-item-status-strip .micro {
+    display: none;
+  }
+
+  .scene-layer.scene-table .table-action-bar-shell {
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  .scene-layer.scene-table .raise-control-strip {
+    padding: 6px 8px;
+  }
+}
+
+/* ── Opponent banter fade-in animation ── */
+
+.opponent-banter {
+  animation: banter-fade 360ms ease both;
+}
+
+@keyframes banter-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Player turn pulse glow ── */
+
+.table-player-summary.active {
+  animation: turn-pulse 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes turn-pulse {
+  from {
+    border-color: rgba(124, 177, 197, 0.28);
+    box-shadow: 0 0 0 0 rgba(124, 177, 197, 0);
+  }
+  to {
+    border-color: rgba(124, 177, 197, 0.48);
+    box-shadow: 0 0 18px -4px rgba(124, 177, 197, 0.18);
+  }
+}
+
+.table-seat-tag.active {
+  animation: opponent-turn-pulse 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes opponent-turn-pulse {
+  from {
+    border-color: rgba(255, 200, 100, 0.36);
+    box-shadow: 0 0 0 0 rgba(255, 200, 100, 0);
+  }
+  to {
+    border-color: rgba(255, 200, 100, 0.52);
+    box-shadow: 0 0 16px -4px rgba(255, 200, 100, 0.16);
+  }
+}

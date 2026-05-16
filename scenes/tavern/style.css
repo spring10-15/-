@@ -236,6 +236,27 @@
   padding: 18px 18px 20px;
 }
 
+/* Updated smoky-den video: neon vault floor with tables centered deeper in frame. */
+.tavern-scene-smoky-den .search-hotspot-join {
+  left: 44%;
+  top: clamp(300px, 45vh, 410px);
+}
+
+.tavern-scene-smoky-den .search-hotspot-route {
+  left: 25%;
+  top: clamp(135px, 23vh, 230px);
+}
+
+.tavern-scene-smoky-den .search-hotspot-stash {
+  left: 80%;
+  top: clamp(255px, 39vh, 350px);
+}
+
+.tavern-scene-smoky-den .search-hotspot-folder {
+  left: 52%;
+  top: clamp(560px, 73vh, 670px);
+}
+
 .search-shell:not(.stash-shell) .scene-modal.services-modal,
 .search-shell:not(.stash-shell) .scene-modal.routes-modal {
   isolation: isolate;

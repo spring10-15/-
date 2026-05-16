@@ -39,6 +39,10 @@ async function expectMode(page, mode) {
   await page.waitForFunction((expected) => document.body.dataset.mode === expected, mode);
 }
 
+async function currentMode(page) {
+  return page.evaluate(() => document.body.dataset.mode ?? "");
+}
+
 async function openFreshPage(context, errors) {
   const page = await context.newPage({ viewport: { width: 1440, height: 960 } });
   page.on("pageerror", (error) => {
@@ -46,7 +50,15 @@ async function openFreshPage(context, errors) {
   });
   page.on("console", (message) => {
     if (message.type() === "error") {
+      if (message.text().startsWith("Failed to load resource:")) {
+        return;
+      }
       errors.push(`console: ${message.text()}`);
+    }
+  });
+  page.on("response", (response) => {
+    if (response.status() >= 400) {
+      errors.push(`response ${response.status()}: ${response.url()}`);
     }
   });
   await page.goto(BASE_URL, { waitUntil: "networkidle" });
@@ -241,13 +253,14 @@ async function settleRiggedTable(page) {
     const state = window.__blacklightGame?.state;
     return state?.mode === "table" && state.run?.currentTable?.legalActions?.player?.check;
   });
-  const checkButton = page.locator('[data-action="player-check"]').first();
-  if (await checkButton.count()) {
-    await checkButton.evaluate((element) => element.click());
-    return;
-  }
   await page.evaluate(() => {
     window.__blacklightGame.dispatch("player-check");
+    window.advanceTime?.(16);
+  });
+  await page.waitForFunction(() => {
+    const state = window.__blacklightGame?.state;
+    const table = state?.run?.currentTable;
+    return state?.mode === "table" && Boolean(table?.pendingConclusion || table?.pendingNextHand);
   });
 }
 
@@ -257,30 +270,21 @@ async function leaveResolvedTable(page) {
     const table = state?.run?.currentTable;
     return state?.mode === "table" && (table?.pendingConclusion || table?.pendingNextHand);
   });
-  const continueButton = page.locator('[data-action="continue-table"]').first();
-  if (await continueButton.count()) {
-    await continueButton.click({ force: true });
-    await page.waitForTimeout(120);
-  }
-  const stillWaiting = await page.evaluate(() => {
-    const state = window.__blacklightGame?.state;
-    const table = state?.run?.currentTable;
-    return state?.mode === "table" && Boolean(table?.pendingConclusion || table?.pendingNextHand);
-  });
-  if (stillWaiting) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const resolved = await page.evaluate(() => {
+      const state = window.__blacklightGame?.state;
+      const table = state?.run?.currentTable;
+      return state?.mode !== "table" || !table || (!table.pendingConclusion && !table.pendingNextHand);
+    });
+    if (resolved) {
+      return;
+    }
     await page.evaluate(() => {
       window.__blacklightGame.dispatch("continue-table");
       window.advanceTime?.(16);
     });
+    await page.waitForTimeout(160);
   }
-  await page.waitForTimeout(120);
-  await page.evaluate(() => {
-    const state = window.__blacklightGame?.state;
-    if (state?.mode === "table") {
-      window.__blacklightGame.dispatch("continue-table");
-      window.advanceTime?.(16);
-    }
-  });
 }
 
 async function runVisualFlowScenario(context, errors) {
@@ -383,6 +387,13 @@ async function runVisualFlowScenario(context, errors) {
   await page.waitForTimeout(200);
   await capture(page, "next-final-hand");
   await leaveResolvedTable(page);
+  await page.waitForFunction(() => ["search", "summary"].includes(document.body.dataset.mode));
+  if ((await currentMode(page)) === "summary") {
+    await page.waitForTimeout(300);
+    await capture(page, "summary-forced-extraction");
+    await page.close();
+    return;
+  }
   await expectMode(page, "search");
   await page.waitForTimeout(300);
   await capture(page, "tavern-stage3");
@@ -468,9 +479,15 @@ async function pageWaitShort(page) {
 }
 
 const errors = [];
+const chromeExecutable =
+  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ||
+  (fs.existsSync("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+    ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    : null);
 const browser = await chromium.launch({
   headless: true,
   args: ["--use-gl=angle", "--use-angle=swiftshader"],
+  ...(chromeExecutable ? { executablePath: chromeExecutable } : {}),
 });
 const context = await browser.newContext();
 

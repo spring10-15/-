@@ -2405,6 +2405,37 @@ h3 {
   color: var(--crimson);
 }
 
+/* ── Extraction condition checklist ── */
+
+.condition-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+  padding: 8px 10px;
+  background: rgba(13, 5, 9, 0.3);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 233, 205, 0.08);
+}
+
+.condition-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.52rem;
+  font-family: var(--pixel-font);
+  letter-spacing: 0.03em;
+}
+
+.condition-check.met {
+  color: var(--green, #5cd97f);
+}
+
+.condition-check.unmet {
+  color: var(--crimson, #e35d6f);
+  opacity: 0.9;
+}
+
 .extraction-preview-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

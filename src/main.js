@@ -102,6 +102,8 @@ canvas.setAttribute("aria-label", `${GAME_TITLE} scene`);
 window.__blacklightGame = game;
 
 let uiDirty = true;
+let sceneDirty = true;
+let lastSceneMode = "";
 let lastFrame = performance.now();
 let lastToastCount = game.state.toasts.length;
 let pendingExtractionAction = null;
@@ -120,7 +122,8 @@ const bgmState = {
 };
 const uiTabs = {
   menuDrawer: "brief",
-  searchFolder: "intel",
+  searchFolder: "run",
+  stashFolder: "inventory",
   searchServices: "stash",
   summaryDrawer: "debrief",
 };
@@ -134,9 +137,18 @@ function clampAudioVolume(value) {
   return Math.min(1, Math.max(0, value));
 }
 
+function settlePointerClick(event, element) {
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.detail > 0 && typeof element?.blur === "function") {
+    requestAnimationFrame(() => element.blur());
+  }
+}
+
 uiRoot.addEventListener("click", (event) => {
   const searchSceneButton = event.target.closest("[data-set-search-scene]");
   if (searchSceneButton) {
+    settlePointerClick(event, searchSceneButton);
     const requestedScene = searchSceneButton.dataset.setSearchScene || "stash";
     if (requestedScene === "stash" && game.state.run?.floorEntered) {
       return;
@@ -156,6 +168,7 @@ uiRoot.addEventListener("click", (event) => {
 
   const searchModalButton = event.target.closest("[data-open-search-modal]");
   if (searchModalButton) {
+    settlePointerClick(event, searchModalButton);
     const tabGroup = searchModalButton.dataset.openTabGroup;
     const tabValue = searchModalButton.dataset.openTabValue;
     if (tabGroup && tabValue) {
@@ -168,7 +181,9 @@ uiRoot.addEventListener("click", (event) => {
     return;
   }
 
-  if (event.target.closest("[data-close-search-modal]")) {
+  const closeSearchModalButton = event.target.closest("[data-close-search-modal]");
+  if (closeSearchModalButton) {
+    settlePointerClick(event, closeSearchModalButton);
     activeSearchModal = null;
     uiDirty = true;
     renderUi();
@@ -177,6 +192,7 @@ uiRoot.addEventListener("click", (event) => {
 
   const tableSidebarButton = event.target.closest("[data-open-table-sidebar]");
   if (tableSidebarButton) {
+    settlePointerClick(event, tableSidebarButton);
     const nextPanel = tableSidebarButton.dataset.openTableSidebar;
     activeTableSidebar = activeTableSidebar === nextPanel ? null : nextPanel;
     if (activeTableSidebar !== "player") {
@@ -189,6 +205,7 @@ uiRoot.addEventListener("click", (event) => {
 
   const playerButton = event.target.closest("[data-select-opponent]");
   if (playerButton) {
+    settlePointerClick(event, playerButton);
     const nextOpponentId = playerButton.dataset.selectOpponent;
     if (activeTableSidebar === "player" && selectedOpponentId === nextOpponentId) {
       activeTableSidebar = null;
@@ -202,7 +219,9 @@ uiRoot.addEventListener("click", (event) => {
     return;
   }
 
-  if (event.target.closest("[data-close-table-sidebar]")) {
+  const closeTableSidebarButton = event.target.closest("[data-close-table-sidebar]");
+  if (closeTableSidebarButton) {
+    settlePointerClick(event, closeTableSidebarButton);
     activeTableSidebar = null;
     selectedOpponentId = null;
     uiDirty = true;
@@ -212,6 +231,7 @@ uiRoot.addEventListener("click", (event) => {
 
   const tabButton = event.target.closest("[data-tab-group]");
   if (tabButton) {
+    settlePointerClick(event, tabButton);
     uiTabs[tabButton.dataset.tabGroup] = tabButton.dataset.tabValue;
     uiDirty = true;
     renderUi();
@@ -222,6 +242,7 @@ uiRoot.addEventListener("click", (event) => {
   if (!button) {
     return;
   }
+  settlePointerClick(event, button);
 
   const action = button.dataset.action;
   if (action === "enter-floor") {
@@ -280,7 +301,48 @@ uiRoot.addEventListener("click", (event) => {
     payload.language = button.dataset.language;
   }
 
+  if (action === "player-raise-to") {
+    payload.raiseTarget = Number(button.dataset.raiseTarget) || 0;
+  }
+
+  // Pure UI toggle — no game state change
+  if (action === "toggle-hand-log") {
+    const logBody = document.getElementById("hand-log-body");
+    const icon = button.querySelector(".log-toggle-icon");
+    if (logBody) {
+      const collapsed = logBody.classList.toggle("collapsed");
+      button.setAttribute("aria-expanded", String(!collapsed));
+      if (icon) icon.textContent = collapsed ? "▸" : "▾";
+    }
+    return;
+  }
+
   send(action, payload);
+});
+
+// Raise slider: update display + confirm button value in real time
+uiRoot.addEventListener("input", (event) => {
+  const slider = event.target.closest("[data-raise-slider]");
+  if (!slider) return;
+  const value = Number(slider.value);
+  const strip = slider.closest(".raise-control-strip");
+  if (!strip) return;
+  const display = strip.querySelector("[data-raise-display]");
+  if (display) display.textContent = money(value);
+  const confirmBtn = strip.querySelector(".raise-confirm-btn");
+  if (confirmBtn) confirmBtn.dataset.raiseTarget = value;
+});
+
+// Raise preset buttons
+uiRoot.addEventListener("click", (event) => {
+  const preset = event.target.closest("[data-raise-preset]");
+  if (!preset) return;
+  settlePointerClick(event, preset);
+  const value = Number(preset.dataset.raisePreset);
+  const strip = preset.closest(".raise-control-strip");
+  if (!strip) return;
+  const slider = strip.querySelector("[data-raise-slider]");
+  if (slider) { slider.value = value; slider.dispatchEvent(new Event("input", { bubbles: true })); }
 });
 
 uiRoot.addEventListener("keydown", (event) => {
@@ -347,7 +409,23 @@ function frame(now) {
   lastFrame = now;
   const advanced = game.advanceTime(dt * 1000);
   syncBgm(now);
-  drawScene();
+
+  // Canvas dirty detection: redraw when mode changes or video is active
+  const currentMode = game.state.mode;
+  if (currentMode !== lastSceneMode) {
+    sceneDirty = true;
+    lastSceneMode = currentMode;
+  }
+  // Video backgrounds need per-frame draws; static scenes throttle to ~4 fps
+  const hasVideo = VIDEO_BACKGROUNDS.active?.entry?.canDraw() ?? false;
+  if (hasVideo || sceneDirty) {
+    drawScene();
+    sceneDirty = false;
+  } else if (now - (frame._lastSlowDraw ?? 0) > 250) {
+    drawScene();
+    frame._lastSlowDraw = now;
+  }
+
   if (advanced) {
     uiDirty = true;
   }
@@ -359,10 +437,18 @@ function frame(now) {
     uiDirty = true;
   }
   if (game.state.mode === "menu") {
-    const titleSignature = getMenuTitleAnimation(now).signature;
-    if (titleSignature !== lastMenuTitleSignature) {
-      lastMenuTitleSignature = titleSignature;
-      uiDirty = true;
+    const anim = getMenuTitleAnimation(now);
+    if (anim.signature !== lastMenuTitleSignature) {
+      lastMenuTitleSignature = anim.signature;
+      // Targeted DOM patch instead of full re-render
+      const copyEl = uiRoot.querySelector(".menu-title-copy");
+      const caretEl = uiRoot.querySelector(".menu-title-caret");
+      if (copyEl && caretEl) {
+        copyEl.textContent = anim.visibleText || " ";
+        caretEl.classList.toggle("visible", anim.caretVisible);
+      } else {
+        uiDirty = true;
+      }
     }
   } else if (lastMenuTitleSignature) {
     lastMenuTitleSignature = "";
@@ -616,6 +702,7 @@ function getSceneHelpers() {
     renderCompactStatChip,
     renderScenePhaseChip,
     renderSuspicionStrip,
+    renderHeatPressureNote,
     renderSceneHotspot,
     renderFirstPersonFrame,
     renderOutsiderFrame,
@@ -642,6 +729,7 @@ function getSceneHelpers() {
     describePressureState,
     describeOpponentTell,
     describeOpponentPressureAccent,
+    getRaiseRange: () => game.getRaiseRange(),
   };
 }
 
@@ -985,6 +1073,34 @@ function renderSuspicionStrip(heat) {
         ${Array.from({ length: 6 }, (_, index) => `<span class="suspicion-segment ${index < heat ? "filled" : ""}"></span>`).join("")}
       </div>
     </div>
+  `;
+}
+
+function renderHeatPressureNote(run) {
+  const zh = currentLanguage() === "zh";
+  const heat = run?.heat ?? 0;
+  let title = zh ? "风声很低" : "Low heat";
+  let body = zh ? "现在还能正常搜、打、撤。" : "You can still search, play, and leave normally.";
+  let tone = "cool";
+  if (heat >= 6) {
+    title = zh ? "封场临界" : "Lockdown";
+    body = zh ? "会立刻尝试强制撤离；没有可用路线就会被捕结算。" : "The floor will force an exit; no viable route means arrest.";
+    tone = "bad";
+  } else if (heat >= 5) {
+    title = zh ? "门口被盯死" : "Watched exits";
+    body = zh ? "公开撤离会加价，隐藏路线和降风声道具开始变关键。" : "Public exits cost more. Hidden routes and heat reducers matter.";
+    tone = "bad";
+  } else if (heat >= 3) {
+    title = zh ? "有人开始记脸" : "Faces remembered";
+    body = zh ? "继续深入会提高买入风险，撤离前最好准备路线或降风声。" : "Deeper rooms get riskier. Prepare an exit or cool the heat first.";
+    tone = "warn";
+  }
+  return `
+    <aside class="heat-pressure-note ${tone}">
+      <span class="eyebrow">${zh ? "风声后果" : "Heat Consequence"}</span>
+      <strong>${title}</strong>
+      <span>${body}</span>
+    </aside>
   `;
 }
 
@@ -2005,12 +2121,17 @@ function renderIntelDot(label, known) {
   return `<span class="intel-dot ${known ? "known" : "unknown"}">${label}</span>`;
 }
 
+function renderConditionCheck(label, met) {
+  return `<span class="condition-check ${met ? "met" : "unmet"}">${met ? "✓" : "✗"} ${label}</span>`;
+}
+
 function renderExtractionCards(
   run,
   preview = buildExtractionPreview(run),
 ) {
   const valuables = getRunValuables(run);
   const zh = currentLanguage() === "zh";
+  const heat = run.heat ?? 0;
   return `
     <div class="route-card extraction-route compact-route general-route ${preview.general.available ? "" : "locked"}">
       <div class="card-topline">
@@ -2023,6 +2144,11 @@ function renderExtractionCards(
         t("The cleanest visible exit. The goods survive, the cash gets skimmed."),
         [t("Public eyes"), t("Cash tax"), zh ? "6 风声封门" : "Locks at 6 heat"],
       )}
+      <div class="condition-checklist">
+        ${renderConditionCheck(zh ? "公开出口线激活" : "Public exit lead active", preview.general.visible !== false)}
+        ${renderConditionCheck(zh ? `风声 < 6 (当前: ${heat})` : `Heat < 6 (now: ${heat})`, heat < 6)}
+        ${renderConditionCheck(zh ? `现金够付费用 (需 ${preview.general.fee})` : `Cash covers fee (need ${preview.general.fee})`, run.cashOnHand >= preview.general.fee)}
+      </div>
       <p class="eyebrow">${t("Front Of House")}</p>
       <div class="stat-row"><span class="stat-label">${t("General Extraction")}</span><span class="stat-value">${money(
         preview.general.fee,
@@ -2061,6 +2187,11 @@ function renderExtractionCards(
         zh ? `${preview.fixed.routeName} 会把撤离压得更紧，但前提是耳语还活着。` : `${preview.fixed.routeName} keeps the exit tight, but only while the whisper stays live.`,
         [t("Reserve first"), t("Lowest handoff"), zh ? `风声上限 ${run.fixedRouteReservation?.maxHeat ?? run.fixedRouteOffer.maxHeat}` : `Heat cap ${run.fixedRouteReservation?.maxHeat ?? run.fixedRouteOffer.maxHeat}`],
       )}
+      <div class="condition-checklist">
+        ${renderConditionCheck(zh ? "已预订路线" : "Route reserved", Boolean(preview.fixed.reserved || preview.fixed.available))}
+        ${renderConditionCheck(zh ? `风声 ≤ ${run.fixedRouteReservation?.maxHeat ?? run.fixedRouteOffer.maxHeat} (当前: ${heat})` : `Heat ≤ ${run.fixedRouteReservation?.maxHeat ?? run.fixedRouteOffer.maxHeat} (now: ${heat})`, heat <= (run.fixedRouteReservation?.maxHeat ?? run.fixedRouteOffer.maxHeat))}
+        ${renderConditionCheck(zh ? `现金够付交接费 (需 ${preview.fixed.fee})` : `Cash covers handoff (need ${preview.fixed.fee})`, run.cashOnHand >= preview.fixed.fee)}
+      </div>
       <p class="eyebrow">${t("Prepared Line")}</p>
       <div class="stat-row"><span class="stat-label">${t("Fixed Route")}</span><span class="stat-value">${
         preview.fixed.routeName

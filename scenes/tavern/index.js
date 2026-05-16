@@ -16,6 +16,7 @@ export function renderTavernScene(state, helpers) {
     money,
     renderFirstPersonFrame,
     renderCompactStatChip,
+    renderHeatPressureNote,
     renderSceneHotspot,
     activeSearchModal,
   } = helpers;
@@ -37,7 +38,7 @@ export function renderTavernScene(state, helpers) {
   );
 
   return `
-    <div class="scene-shell search-shell fixed-scene-shell">
+    <div class="scene-shell search-shell fixed-scene-shell tavern-scene-${run.tavernSceneId}">
       ${renderFirstPersonFrame("search")}
       <section class="minimal-scene-hud">
         <div class="minimal-scene-title">
@@ -49,6 +50,7 @@ export function renderTavernScene(state, helpers) {
           ${renderCompactStatChip(t("Action points"), `${run.actionPoints}/2`, run.actionPoints > 0 ? "good" : "bad")}
         </div>
       </section>
+      ${renderHeatPressureNote(run)}
       <section class="scene-hotspot-stage tavern-hotspot-stage">
         <div class="scene-hotspot-layer tavern-hotspot-layer">
           ${renderSceneHotspot({
@@ -107,7 +109,7 @@ function renderSearchModal(run, persistent, modal, extractionPreview, searchItem
         ? t("Bar Shelf")
         : modal === "routes"
           ? t("Extraction Routes")
-          : t("Inventory And Notes");
+          : t("Memo");
   return `
     <div class="scene-modal-layer tavern-modal-layer tavern-${modal}-layer">
       <button class="scene-modal-backdrop" data-close-search-modal aria-label="${t("Close")}"></button>
@@ -138,7 +140,7 @@ function renderSearchModal(run, persistent, modal, extractionPreview, searchItem
                 ? renderStashServicesModal(run, extractionPreview, searchItems, helpers, { mode: "floor" })
                 : modal === "routes"
                   ? renderExtractionRoutesModal(run, extractionPreview, null, helpers)
-                  : renderStashFolderModal(run, extractionPreview, helpers, persistent)
+                  : renderStashFolderModal(run, extractionPreview, helpers, persistent, { variant: "tavern" })
           }
         </div>
       </section>

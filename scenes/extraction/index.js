@@ -31,7 +31,12 @@ export function renderSummaryScene(state, helpers) {
     ? summary.completedTables.map((tableId) => helpers.tableCopy(tableId).name).join(" -> ")
     : t("No rooms cleared");
   const successTitle = currentLanguage() === "zh" ? "成功撤离" : "Successful Extraction";
-  const failureTitle = currentLanguage() === "zh" ? "撤离失败" : "Compromised";
+  const caught = Boolean(summary.caught);
+  const failureTitle = caught
+    ? currentLanguage() === "zh" ? "被捕 / 撤离失败" : "Arrested / Compromised"
+    : currentLanguage() === "zh" ? "撤离失败" : "Compromised";
+  const seizedCash = summary.seizedCash ?? summary.lostCash ?? 0;
+  const seizedValuables = summary.seizedValuables ?? summary.lostValuables ?? 0;
   const goodsLine = summary.success
     ? summary.settledValuables.length
       ? summary.settledValuables.map((item) => item.name).join(" / ")
@@ -44,6 +49,35 @@ export function renderSummaryScene(state, helpers) {
       ? summary.costs.join(" / ")
       : t("No payout costs")
     : summary.reason;
+  const leadLine = summary.success
+    ? currentLanguage() === "zh"
+      ? `撤离方式：${summary.routeLabel}。金库现在有 ${money(state.persistent.vault)}。`
+      : `Route: ${summary.routeLabel}. The vault now holds ${money(state.persistent.vault)}.`
+    : currentLanguage() === "zh"
+      ? caught
+        ? `失败原因：${summary.reason}。现场被封，现金和货物按扣押结算。`
+        : `失败原因：${summary.reason}。这趟没能完整带出去。`
+      : caught
+        ? `Cause: ${summary.reason}. The floor locked down and the carry was seized.`
+        : `Cause: ${summary.reason}. The run broke before the money settled.`;
+  const statusText = summary.success
+    ? currentLanguage() === "zh" ? "已结算" : "SETTLED"
+    : caught
+      ? currentLanguage() === "zh" ? "被捕扣押" : "ARRESTED"
+      : currentLanguage() === "zh" ? "已扣押" : "SEIZED";
+  const statMarkup = summary.success
+    ? `
+      ${helpers.renderCompactStatChip(t("Funds secured"), money(summary.totalSettled), "good")}
+      ${helpers.renderCompactStatChip(t("Cash carried out"), money(summary.settledCash), "warm")}
+      ${helpers.renderCompactStatChip(t("Stash net"), money(summary.stashNet), "cool")}
+      ${helpers.renderCompactStatChip(t("Valuables settled"), money(summary.valuableTotal), "neutral")}
+    `
+    : `
+      ${helpers.renderCompactStatChip(currentLanguage() === "zh" ? "扣押现金" : "Cash seized", money(seizedCash), "bad")}
+      ${helpers.renderCompactStatChip(currentLanguage() === "zh" ? "扣押贵重物" : "Goods seized", money(seizedValuables), "warn")}
+      ${helpers.renderCompactStatChip(t("Wallet salvage"), money(summary.salvaged), "cool")}
+      ${helpers.renderCompactStatChip(t("Reason"), summary.reason, "bad")}
+    `;
   return `
     <div class="scene-shell summary-shell fixed-scene-shell result-scene-shell">
       <section class="summary-main-shell ${summary.success ? "success" : "failure"}">
@@ -51,38 +85,14 @@ export function renderSummaryScene(state, helpers) {
           <div>
             <p class="eyebrow">${summary.success ? t("Vault Settlement") : t("Room Closed In")}</p>
             <h1>${summary.success ? successTitle : failureTitle}</h1>
-            <p class="micro">
-              ${
-                summary.success
-                  ? currentLanguage() === "zh"
-                    ? `撤离方式：${summary.routeLabel}。金库现在有 ${money(state.persistent.vault)}。`
-                    : `Route: ${summary.routeLabel}. The vault now holds ${money(state.persistent.vault)}.`
-                  : currentLanguage() === "zh"
-                    ? `失败原因：${summary.reason}。这趟没能完整带出去。`
-                    : `Cause: ${summary.reason}. The run broke before the money settled.`
-              }
-            </p>
+            <p class="micro">${leadLine}</p>
           </div>
           <span class="summary-status-pill ${summary.success ? "success" : "failure"}">
-            ${summary.success ? (currentLanguage() === "zh" ? "已结算" : "SETTLED") : currentLanguage() === "zh" ? "已扣押" : "SEIZED"}
+            ${statusText}
           </span>
         </div>
         <div class="summary-stat-row">
-          ${
-            summary.success
-              ? `
-                ${helpers.renderCompactStatChip(t("Funds secured"), money(summary.totalSettled), "good")}
-                ${helpers.renderCompactStatChip(t("Cash carried out"), money(summary.settledCash), "warm")}
-                ${helpers.renderCompactStatChip(t("Stash net"), money(summary.stashNet), "cool")}
-                ${helpers.renderCompactStatChip(t("Valuables settled"), money(summary.valuableTotal), "neutral")}
-              `
-              : `
-                ${helpers.renderCompactStatChip(t("Cash lost"), money(summary.lostCash), "bad")}
-                ${helpers.renderCompactStatChip(t("Stash lost"), money(summary.lostStash), "warn")}
-                ${helpers.renderCompactStatChip(t("Wallet salvage"), money(summary.salvaged), "cool")}
-                ${helpers.renderCompactStatChip(t("Reason"), summary.reason, "bad")}
-              `
-          }
+          ${statMarkup}
         </div>
         <div class="summary-text-block">
           <p><span class="eyebrow">${t("Trail Snapshot")}</span> ${roomTrail}</p>

@@ -2315,3 +2315,44 @@ Original prompt: 我计划在这个文件夹下创建一个游戏，不是简单
   - `node --check scenes/stash/index.js`
   - `node scripts/verify_full_game_flow.mjs` -> `31 / 31` passed
   - `node scripts/verify_browser_flows.mjs` -> `errors: []`
+
+## 2026-05-15 Human-Player Flow Polish Pass
+
+- Played through the generated browser coverage as a human-facing UX pass, prioritizing whether the player can quickly understand and act without fighting the interface.
+- Reordered the poker action dock so the decisive actions appear first: fold, check, call, all-in, then table items, then optional raise fine-tuning.
+- Compacted the table item display so usable tools do not push the action controls off-screen; duplicate tools now collapse into count chips.
+- Added localized disabled-action hints for illegal poker actions so the UI can explain why check/call/fold/all-in is unavailable without leaking English in Chinese mode.
+- Tuned laptop-height table layout so player hand, action buttons, item use, and raise controls fit in view while still staying below the public board.
+- Hardened browser verification for legitimate forced-extraction branches after high heat, instead of treating them as a failed return-to-tavern path.
+- Validation:
+  - `node --check scenes/poker/index.js`
+  - `node --check scripts/verify_browser_flows.mjs`
+  - `node scripts/verify_full_game_flow.mjs` -> `31 / 31` passed
+  - `node scripts/verify_browser_flows.mjs` -> `errors: []`
+
+## 2026-05-15 Heat And Arrest Flow Pass
+
+- Made collapse summaries read explicitly as arrest/seizure outcomes when the run has no legal table or exit left, including seized cash, seized valuables, and wallet-salvage numbers.
+- Added click-settling behavior for UI buttons so pointer clicks prevent default browser focus behavior and release focus after dispatch, reducing sticky/click-again interactions.
+- Surfaced heat consequences directly in the tavern scene: low heat is normal, heat 3+ warns about attention, heat 5 warns about exit surcharges, and heat 6 explains forced exit/arrest.
+- Added regression assertions for caught failed runs and seized-cash accounting.
+- Validation:
+  - `node --check src/main.js`
+  - `node --check scenes/extraction/index.js`
+  - `node --check scenes/tavern/index.js`
+  - `node --check src/i18n.js`
+  - `node scripts/verify_full_game_flow.mjs` -> `31 / 31` passed
+  - `node scripts/verify_browser_flows.mjs` -> `errors: []`
+
+## 2026-05-16 Memo UX Refactor Pass
+
+- Rebuilt the memo/folder UI around decision-first tabs instead of a long mixed ledger.
+- Tavern memo now defaults to a tactical run brief: current run summary, recent timeline, usable items, and exit-pressure read.
+- Hideout memo now defaults to current inventory, with separate opponent-intel and long-term archive tabs.
+- Kept the parchment/case-folder visual language while improving title contrast and changing the tavern modal title to `备忘录`.
+- Validation:
+  - `node --check scenes/stash/index.js`
+  - `node --check scenes/tavern/index.js`
+  - `node --check src/main.js`
+  - `node scripts/verify_full_game_flow.mjs` -> `31 / 31` passed
+  - `node scripts/verify_browser_flows.mjs` -> `errors: []`

@@ -1,5 +1,5 @@
 export function renderPokerScene(state, helpers) {
-  const { t, money, getItemDef, getRoomRewardPreview, tableCopy, renderFirstPersonFrame, renderCompactStatChip, renderBoardCards, itemCopy, formatCardInline, renderTableCue, renderFinalHandSpotlight, localizeStreet, currentLanguage } = helpers;
+  const { t, money, getItemDef, getRoomRewardPreview, tableCopy, renderFirstPersonFrame, renderCompactStatChip, renderBoardCards, itemCopy, formatCardInline, renderTableCue, renderFinalHandSpotlight, localizeStreet, currentLanguage, getRaiseRange } = helpers;
   const run = state.run;
   const table = run.currentTable;
   const player = table.players[0];
@@ -66,8 +66,11 @@ export function renderPokerScene(state, helpers) {
         ${renderTableActionBar(run, table, usableItems, helpers)}
       </section>
       <aside class="table-inline-log-card" aria-live="polite">
-        <p class="eyebrow">${t("Hand Log")}</p>
-        <div class="table-inline-log-stack">
+        <button class="log-toggle-btn" data-action="toggle-hand-log" aria-expanded="true">
+          <span class="eyebrow">${t("Hand Log")}</span>
+          <span class="log-toggle-icon">▾</span>
+        </button>
+        <div class="table-inline-log-stack" id="hand-log-body">
           ${tableLog.length ? tableLog.map((entry) => `<p class="micro">${entry}</p>`).join("") : `<p class="micro">${t("The felt is still quiet.")}</p>`}
         </div>
       </aside>
@@ -130,17 +133,15 @@ function capitalizeAction(action) {
 }
 
 function playerTurnLabel(table, helpers) {
-  const { t, currentLanguage } = helpers;
+  const { t } = helpers;
   if (table.currentActorId === "player") {
     return t("Your move");
   }
   const actor = table.players.find((participant) => participant.id === table.currentActorId);
   if (!actor) {
-    return currentLanguage() === "zh" ? "等待下一步" : "Waiting for the next move";
+    return t("Waiting for the next move");
   }
-  return currentLanguage() === "zh"
-    ? `${helpers.participantName(actor)}行动中`
-    : `${helpers.participantName(actor)} is acting`;
+  return `${helpers.participantName(actor)} ${t("is acting")}`;
 }
 
 export function renderTableSidebar(run, table, usableItems, stakesPreview, helpers) {
@@ -245,7 +246,7 @@ export function getAvailableTableItemActions(table, usableItems, helpers) {
               key: `${item.id}-${participant.id}`,
               label: `${def.name} / ${helpers.participantName(participant)}`,
               detail: def.description,
-              buttonLabel: helpers.currentLanguage() === "zh" ? `读取 ${helpers.participantName(participant)}` : `Read ${helpers.participantName(participant)}`,
+              buttonLabel: `${helpers.t("Read")} ${helpers.participantName(participant)}`,
               payload: { action: "use-table-item", instanceId: item.id, targetId: participant.id },
             });
           });
@@ -266,10 +267,7 @@ export function getAvailableTableItemActions(table, usableItems, helpers) {
             key: `${item.id}-${participant.id}`,
             label: `${def.name} / ${helpers.participantName(participant)}`,
             detail: def.description,
-            buttonLabel:
-              helpers.currentLanguage() === "zh"
-                ? `记录 ${helpers.participantName(participant)}`
-                : `Log ${helpers.participantName(participant)}`,
+            buttonLabel: `${helpers.t("Log")} ${helpers.participantName(participant)}`,
             payload: { action: "use-table-item", instanceId: item.id, targetId: participant.id },
           });
         });
@@ -293,21 +291,21 @@ export function getAvailableTableItemActions(table, usableItems, helpers) {
 
 function describeTableItemState(table, item, helpers) {
   const def = helpers.itemCopy(item.itemId);
-  const zh = helpers.currentLanguage() === "zh";
+  const t = helpers.t;
   if (item.itemId === "marked-lens") {
     if (table.itemUsage.markedLens) {
-      return { ready: false, text: zh ? "本桌已使用" : "Used at this table" };
+      return { ready: false, text: t("Used at this table") };
     }
     if (table.street === "river") {
-      return { ready: false, text: zh ? "河牌后不可用" : "Unavailable on river" };
+      return { ready: false, text: t("Unavailable on river") };
     }
-    return { ready: true, text: zh ? "可窥看下一张公共牌" : "Ready to peek next board card" };
+    return { ready: true, text: t("Ready to peek next board card") };
   }
   if (item.itemId === "signal-lighter") {
     if (table.itemUsage.signalLighter) {
-      return { ready: false, text: zh ? "本桌已使用" : "Used at this table" };
+      return { ready: false, text: t("Used at this table") };
     }
-    return { ready: true, text: zh ? "可读取 1 名对手当前牌压" : "Ready to read one opponent" };
+    return { ready: true, text: t("Ready to read one opponent") };
   }
   if (item.itemId === "player-notes") {
     return table.players.some(
@@ -316,27 +314,20 @@ function describeTableItemState(table, item, helpers) {
         !participant.folded &&
         !helpers.getKnownOpponentArchetypeLabel(participant),
     )
-      ? {
-          ready: true,
-          text:
-            zh ? "可记录 1 名对手的风格标签" : "Ready to log one opponent archetype",
-        }
-      : {
-          ready: false,
-          text: zh ? "当前没有新的标签可记录" : "No new archetype to log right now",
-        };
+      ? { ready: true, text: t("Ready to log one opponent archetype") }
+      : { ready: false, text: t("No new archetype to log right now") };
   }
   if (item.itemId === "sleeve-clip") {
     if (table.itemUsage.sleeveClip) {
-      return { ready: false, text: zh ? "本手已使用" : "Used this hand" };
+      return { ready: false, text: t("Used this hand") };
     }
     if (table.street !== "preflop") {
-      return { ready: false, text: zh ? "仅限翻前" : "Preflop only" };
+      return { ready: false, text: t("Preflop only") };
     }
     if (table.turnCounter > 0 || table.currentActorId !== "player") {
-      return { ready: false, text: zh ? "只在你第一次决策前可用" : "Only before your first decision" };
+      return { ready: false, text: t("Only before your first decision") };
     }
-    return { ready: true, text: zh ? "可替换 1 张手牌" : "Ready to swap one hole card" };
+    return { ready: true, text: t("Ready to swap one hole card") };
   }
   return { ready: false, text: def.description };
 }
@@ -345,23 +336,31 @@ function renderTableInventoryStrip(table, usableItems, helpers) {
   const { t, itemCopy } = helpers;
   if (!usableItems.length) {
     return `
-      <div class="table-item-status-strip">
+      <div class="table-item-status-strip compact-empty">
         <p class="micro">${t("The felt is still quiet.")}</p>
       </div>
     `;
   }
+  const counts = usableItems.reduce((map, item) => {
+    const state = describeTableItemState(table, item, helpers);
+    const current = map.get(item.itemId) ?? { count: 0, ready: 0, text: state.text };
+    current.count += 1;
+    current.ready += state.ready ? 1 : 0;
+    current.text = state.text;
+    map.set(item.itemId, current);
+    return map;
+  }, new Map());
   return `
-    <div class="table-item-status-strip">
+    <div class="table-item-status-strip compact-tools" aria-label="${t("Table Tool")}">
       <p class="eyebrow">${t("Table Tool")}</p>
       <div class="table-item-status-grid">
-        ${usableItems
-          .map((item) => {
-            const def = itemCopy(item.itemId);
-            const state = describeTableItemState(table, item, helpers);
+        ${Array.from(counts.entries())
+          .map(([itemId, state]) => {
+            const def = itemCopy(itemId);
             return `
               <article class="table-item-status-card ${state.ready ? "ready" : "spent"}" title="${def.description}">
-                <strong>${def.name}</strong>
-                <p class="micro">${state.text}</p>
+                <strong>${def.name}<span>x${state.count}</span></strong>
+                <p class="micro">${state.ready ? `${state.ready} ${t("ready")}` : state.text}</p>
               </article>
             `;
           })
@@ -371,8 +370,25 @@ function renderTableInventoryStrip(table, usableItems, helpers) {
   `;
 }
 
+function renderTableItemButtons(itemActions) {
+  if (!itemActions.length) {
+    return "";
+  }
+  return `
+    <div class="table-item-row">
+      ${itemActions
+        .map(
+          (entry) => `
+            <button class="secondary" title="${entry.detail}" data-action="${entry.payload.action}" data-instance-id="${entry.payload.instanceId}" ${entry.payload.targetId ? `data-target-id="${entry.payload.targetId}"` : ""}>${entry.buttonLabel}</button>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 export function renderTableActionBar(run, table, usableItems, helpers) {
-  const { t, money, currentLanguage } = helpers;
+  const { t, money, getRaiseRange } = helpers;
   if (table.pendingNextHand) {
     return `
       <div class="table-action-bar-shell verdict-shell">
@@ -408,36 +424,53 @@ export function renderTableActionBar(run, table, usableItems, helpers) {
   const player = table.players[0];
   const callAmount = Math.max(0, table.currentBet - player.currentBet);
   const legal = table.legalActions.player ?? {};
+  const raiseRange = getRaiseRange ? getRaiseRange() : null;
+  const canRaise = playerTurn && Boolean(legal.raise) && raiseRange;
   const actions = [
     {
       key: "fold",
       tone: "danger",
       label: t("Fold"),
       enabled: playerTurn && Boolean(legal.fold),
+      disabledHint: playerTurn ? t("Fold is not available right now.") : t("Wait for your turn."),
     },
     {
       key: "check",
       tone: "secondary",
       label: t("Check"),
       enabled: playerTurn && Boolean(legal.check),
+      disabledHint: playerTurn ? t("You are facing a bet, so check is not legal.") : t("Wait for your turn."),
     },
     {
       key: "call",
       tone: "secondary",
       label: callAmount > 0
-        ? currentLanguage() === "zh"
-          ? `${t("Call")} ${money(callAmount)}`
-          : `${t("Call")} (${money(callAmount)})`
+        ? `${t("Call")} ${money(callAmount)}`
         : t("Call"),
       enabled: playerTurn && Boolean(legal.call),
+      disabledHint: playerTurn ? t("There is no bet to call.") : t("Wait for your turn."),
     },
     {
       key: "all-in",
       tone: "cta",
-      label: currentLanguage() === "zh" ? `${t("All-in")} ${money(player.stack)}` : `${t("All-in")} (${money(player.stack)})`,
+      label: `${t("All-in")} ${money(player.stack)}`,
       enabled: playerTurn && Boolean(legal.allIn),
+      disabledHint: playerTurn ? t("You have no chips left to commit.") : t("Wait for your turn."),
     },
   ];
+
+  // Raise slider preset shortcuts
+  const raisePresets = [];
+  if (canRaise) {
+    const halfPot = Math.max(raiseRange.min, Math.floor(raiseRange.pot / 2) + raiseRange.currentBet);
+    const fullPot = Math.max(raiseRange.min, raiseRange.pot + raiseRange.currentBet);
+    if (halfPot <= raiseRange.max && halfPot >= raiseRange.min) {
+      raisePresets.push({ label: `½ ${t("Pot")}`, value: halfPot });
+    }
+    if (fullPot <= raiseRange.max && fullPot >= raiseRange.min && fullPot !== halfPot) {
+      raisePresets.push({ label: `${t("Pot")}`, value: fullPot });
+    }
+  }
 
   return `
     <div class="table-action-bar-shell">
@@ -449,31 +482,34 @@ export function renderTableActionBar(run, table, usableItems, helpers) {
             : t("Blinds post first. Preflop acts from left of the big blind. After the flop, action starts left of the dealer.")
         }</p>
       </div>
-      ${renderTableInventoryStrip(table, usableItems, helpers)}
       <div class="button-row table-button-row">
         ${actions
           .map(
             (entry) => `
-              <button class="${entry.tone}" data-action="player-${entry.key}" ${entry.enabled ? "" : "disabled"}>${entry.label}</button>
+              <button class="${entry.tone}" data-action="player-${entry.key}" title="${entry.enabled ? "" : entry.disabledHint}" ${entry.enabled ? "" : "disabled"}>${entry.label}</button>
             `,
           )
           .join("")}
       </div>
-      ${
-        itemActions.length
-          ? `
-            <div class="table-item-row">
-              ${itemActions
-                .map(
-                  (entry) => `
-                    <button class="secondary" title="${entry.detail}" data-action="${entry.payload.action}" data-instance-id="${entry.payload.instanceId}" ${entry.payload.targetId ? `data-target-id="${entry.payload.targetId}"` : ""}>${entry.buttonLabel}</button>
-                  `,
-                )
-                .join("")}
-            </div>
-          `
-          : ""
-      }
+      ${renderTableItemButtons(itemActions)}
+      ${canRaise ? `
+        <div class="raise-control-strip">
+          <label class="raise-label">${table.currentBet === 0 ? t("Open to") : t("Raise to")}</label>
+          <div class="raise-presets">
+            ${raisePresets.map(p => `<button class="raise-preset-btn" data-raise-preset="${p.value}">${p.label}</button>`).join("")}
+          </div>
+          <div class="raise-slider-row">
+            <span class="raise-bound">${money(raiseRange.min)}</span>
+            <input type="range" class="raise-slider" min="${raiseRange.min}" max="${raiseRange.max}" value="${raiseRange.min}" step="5" data-raise-slider />
+            <span class="raise-bound">${money(raiseRange.max)}</span>
+          </div>
+          <div class="raise-commit-row">
+            <span class="raise-current-value" data-raise-display>${money(raiseRange.min)}</span>
+            <button class="cta raise-confirm-btn" data-action="player-raise-to" data-raise-target="${raiseRange.min}">${table.currentBet === 0 ? t("Open") : t("Raise")}</button>
+          </div>
+        </div>
+      ` : ""}
+      ${itemActions.length ? "" : renderTableInventoryStrip(table, usableItems, helpers)}
     </div>
   `;
 }

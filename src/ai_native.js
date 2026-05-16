@@ -1,4 +1,5 @@
 import { getOpponentDef } from "./data.js";
+import { hashString } from "./utils.js";
 
 const FALLBACK_ZH = {
   inner_monologue: "他有习惯，我先看一圈。",
@@ -278,10 +279,4 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function hashString(value) {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) | 0;
-  }
-  return hash;
-}
+// hashString moved to utils.js
