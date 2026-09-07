@@ -1,0 +1,10 @@
+{
+  "source": "stash-noir.blend",
+  "scale": 0.26,
+  "tabletop_height_m": 0.82,
+  "mesh_objects": 8,
+  "triangles": 185908,
+  "moving_pivot": "CaseLidPivot",
+  "material_status": "Image textures preserved; procedural colors use PBR constants pending baking/art pass",
+  "bytes": 11705068
+}

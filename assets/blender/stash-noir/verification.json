@@ -1,0 +1,29 @@
+{
+  "blender_version": "5.2.1 LTS",
+  "objects": 1479,
+  "meshes": 1115,
+  "collections": [
+    "00 • Studio",
+    "01 • Walnut desk",
+    "02 • Open leather case",
+    "03 • Banded cash bundles",
+    "04 • Casino chips",
+    "05 • Personal valuables",
+    "06 • Cards and gaming plaques",
+    "07 • Brass desk lamp",
+    "08 • Night room and rainy window",
+    "09 • Camera and lighting"
+  ],
+  "camera": "Camera • reference composition",
+  "packed_images": {
+    "banknote.png": true,
+    "card-back.png": true,
+    "plaque.png": true
+  },
+  "engine": "CYCLES",
+  "resolution": [
+    1408,
+    768,
+    100
+  ]
+}
