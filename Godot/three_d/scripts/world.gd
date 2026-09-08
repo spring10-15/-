@@ -2,7 +2,7 @@ extends Node3D
 ## Scene presentation and timing. Table rules own all bets and chip transfers.
 const PlayerController = preload("res://three_d/scripts/player.gd")
 const Interactable = preload("res://three_d/scripts/interactable.gd")
-const TableRules = preload("res://three_d/rules/table.gd")
+const RunRules = preload("res://three_d/rules/run.gd")
 const OpponentRules = preload("res://three_d/rules/opponent.gd")
 const TableHUD = preload("res://three_d/scripts/table_hud.gd")
 const STASH_ASSET = preload("res://three_d/assets/stash.glb")
@@ -13,6 +13,15 @@ var pause_panel: PanelContainer
 var seat_panel: Control
 var table_game: RefCounted
 var table_content: Dictionary
+var run_game: RefCounted
+var economy_label: Label
+var run_panel: PanelContainer
+var run_heading: Label
+var run_body: Label
+var run_confirm: Button
+var run_action := ""
+var run_revision := -1
+var exit_notice: Area3D
 var table_delay := 0.0
 var cards_root: Node3D
 var explore_instructions: Label
@@ -34,6 +43,7 @@ var materials := {}
 
 func _ready() -> void:
 	table_content = JSON.parse_string(FileAccess.get_file_as_string("res://three_d/rules/content.json"))
+	run_game = RunRules.new(table_content)
 	configure_input()
 	make_materials()
 	build_lighting()
@@ -48,6 +58,7 @@ func _ready() -> void:
 	player.focus_changed.connect(show_focus)
 	player.pause_requested.connect(toggle_pause)
 	build_ui()
+	refresh_economy()
 	if not OS.get_cmdline_user_args().has("--test"):
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	readiness = true
@@ -162,7 +173,18 @@ func build_tavern() -> void:
 	cards_root.name = "LiveCards"
 	room.add_child(cards_root)
 	table_target = target(room, "TableSeat", Vector3(-0.45, 1.0, 0.04), Vector3(1.6, 0.50, 0.28), "sit", "坐到牌桌前")
-	make_door(room, Vector3(-2.83, 1.1, 1.65), "返回藏匿点", "enter_stash")
+	make_door(room, Vector3(-2.83, 1.1, 1.65), "查看撤离费用", "enter_stash")
+	box(room, "ExitNotice", Vector3(-2.84, 1.6, 2.55), Vector3(0.04, 0.48, 0.55), "ivory", false)
+	var notice_text := Label3D.new()
+	notice_text.text = "EXIT\n出口告示"
+	notice_text.font_size = 48
+	notice_text.pixel_size = 0.002
+	notice_text.modulate = Color("18221f")
+	notice_text.outline_size = 0
+	notice_text.position = Vector3(-2.805, 1.6, 2.55)
+	notice_text.rotation.y = PI / 2
+	room.add_child(notice_text)
+	exit_notice = target(room, "ExitNoticeTarget", Vector3(-2.73, 1.6, 2.55), Vector3(0.16, 0.52, 0.59), "discover_exit", "查看出口告示")
 	seat_camera = Camera3D.new()
 	seat_camera.name = "SeatCamera"
 	room.add_child(seat_camera)
@@ -226,6 +248,8 @@ func build_ui() -> void:
 	title_label.position = Vector2(32, 25)
 	explore_instructions = label(ui, "WASD 行走   ·   鼠标观察   ·   E 交互   ·   Esc 暂停", 18)
 	explore_instructions.position = Vector2(32, 67)
+	economy_label = label(ui, "", 17)
+	economy_label.position = Vector2(32, 100)
 	crosshair = label(ui, "+", 22)
 	crosshair.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	crosshair.position -= Vector2(7, 15)
@@ -242,6 +266,21 @@ func build_ui() -> void:
 	seat_panel.action_requested.connect(play_action)
 	seat_panel.continue_requested.connect(continue_hand)
 	seat_panel.leave_requested.connect(leave_seat)
+	run_panel = make_panel(ui, "准备出发", "", "确认", confirm_run_action)
+	run_panel.offset_left = -350
+	run_panel.offset_right = 350
+	run_panel.offset_top = -340
+	var column: VBoxContainer = run_panel.get_child(0).get_child(0)
+	run_heading = column.get_child(0)
+	run_confirm = column.get_child(1)
+	run_body = label(column, "", 19)
+	column.move_child(run_body, 1)
+	var cancel := Button.new()
+	cancel.text = "返回探索"
+	cancel.custom_minimum_size.y = 40
+	cancel.pressed.connect(close_run_panel)
+	column.add_child(cancel)
+	run_panel.hide()
 	pause_panel.hide()
 	seat_panel.hide()
 
@@ -287,7 +326,7 @@ func show_focus(focus: Area3D) -> void:
 		hint_label.text = focus.prompt() if is_instance_valid(focus) else ""
 
 func request_action(anchor: Area3D) -> bool:
-	if paused or seated or action_busy or not player.can_interact(anchor):
+	if paused or run_panel.visible or seated or action_busy or not player.can_interact(anchor):
 		return false
 	match anchor.action_id:
 		"toggle_case":
@@ -302,16 +341,25 @@ func request_action(anchor: Area3D) -> bool:
 			anchor.title = "合上皮箱" if case_open else "打开皮箱"
 			show_focus(anchor)
 		"enter_tavern":
-			travel("tavern")
+			show_run_panel("enter")
 		"enter_stash":
-			travel("stash")
+			show_run_panel("extract")
+		"discover_exit":
+			run_game.discover_exit()
+			exit_notice.title = "出口已确认 · 门口可查看撤离费用"
+			refresh_economy()
+			show_focus(anchor)
 		"sit":
+			var reason: String = run_game.table_blocked_reason()
+			if not reason.is_empty():
+				hint_label.text = reason
+				return false
 			return_transform = player.global_transform
 			seated = true
 			player.controls_enabled = false
 			player.velocity = Vector3.ZERO
 			seat_camera.current = true
-			seat_panel.pregame()
+			seat_panel.pregame(run_game.cash)
 			seat_panel.show()
 			explore_instructions.hide()
 			crosshair.hide()
@@ -328,11 +376,15 @@ func travel(destination: String) -> void:
 	player.camera.rotation = Vector3(-0.10, 0, 0)
 	title_label.text = "烟雾酒馆" if destination == "tavern" else "藏匿点"
 	player.update_focus()
+	refresh_economy()
 
 func leave_seat() -> void:
 	if paused or not seated or (table_game != null and table_game.state.status != "finished"):
 		return
+	if table_game != null and not run_game.settle_table(run_game.revision):
+		return
 	table_game = null
+	refresh_economy()
 	clear_cards()
 	seated = false
 	explore_instructions.show()
@@ -344,11 +396,14 @@ func leave_seat() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func toggle_pause() -> void:
-	if seated and table_game == null:
-		leave_seat()
+	if run_panel.visible:
+		close_run_panel()
 		return
 	if paused:
 		resume()
+		return
+	if seated and table_game == null:
+		leave_seat()
 		return
 	pause_game()
 
@@ -373,15 +428,17 @@ func resume() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if seated else Input.MOUSE_MODE_CAPTURED
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT and readiness and not OS.get_cmdline_user_args().has("--test"):
+	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT and readiness and not run_panel.visible and not OS.get_cmdline_user_args().has("--test"):
 		if not paused:
 			pause_game()
 
 func start_table(seed_value: int = -1) -> void:
 	if not seated or table_game != null or paused:
 		return
-	table_game = TableRules.new()
-	table_game.start(table_content.tables["cargo-table"], int(Time.get_ticks_usec() % 2147483647) if seed_value < 0 else seed_value)
+	table_game = run_game.enter_table(int(Time.get_ticks_usec() % 2147483647) if seed_value < 0 else seed_value, run_game.revision)
+	if table_game == null:
+		return
+	refresh_economy()
 	table_delay = 0.45
 	refresh_table()
 
@@ -460,3 +517,66 @@ func draw_card(card: Dictionary, pos: Vector3) -> void:
 	text.position = Vector3(0, 0.006, 0)
 	text.rotation.x = -PI / 2
 	node.add_child(text)
+
+func refresh_economy() -> void:
+	if run_game.active:
+		economy_label.text = "金库 %d  ·  随身 %d  ·  风声 %d / 6  ·  出口%s" % [run_game.vault, run_game.cash, run_game.heat, "已知" if run_game.public_exit else "未知：查看门旁告示"]
+	elif not run_game.last_result.is_empty():
+		var result: Dictionary = run_game.last_result
+		economy_label.text = "金库 %d  ·  上局到账 %d / 费用 %d / 净变化 %+d" % [run_game.vault, result.net, result.fee, result.profit]
+	else:
+		economy_label.text = "金库 %d  ·  每次最多带出 300  ·  本次试玩，关闭程序不保存" % run_game.vault
+
+func show_run_panel(action: String) -> void:
+	run_action = action
+	run_revision = run_game.revision
+	run_confirm.disabled = false
+	if action == "enter":
+		run_heading.text = "前往烟雾酒馆"
+		var amount := mini(int(table_content.standardBankroll), int(run_game.vault))
+		run_body.text = "金库 %d → %d，随身带出 %d。\n货运桌买入 60；撤离需要找到门旁的出口告示。\n本次试玩，关闭程序不保存。" % [run_game.vault, run_game.vault - amount, amount]
+		run_confirm.text = "带钱出发"
+		if run_game.vault < 120:
+			run_action = "reset"
+			run_body.text = "金库不足 120，暂时无法出发。\n可将试玩资金重置为 1,200，再开始新局。"
+			run_confirm.text = "重置试玩资金"
+	else:
+		var quote: Dictionary = run_game.extraction_quote()
+		run_heading.text = "普通出口 · 撤离结算"
+		run_body.text = "随身现金 %d\n撤离费 %d（24 + 现金的 12%%，向下取整）\n到账金库 %d · 本局净变化 %+d" % [run_game.cash, quote.fee, quote.net, quote.net - run_game.bankroll]
+		run_confirm.text = "支付费用并返回藏匿点"
+		if not quote.reason.is_empty():
+			run_body.text += "\n" + quote.reason
+			run_confirm.disabled = true
+	player.controls_enabled = false
+	player.velocity = Vector3.ZERO
+	crosshair.hide()
+	hint_label.text = ""
+	run_panel.show()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+func close_run_panel() -> void:
+	run_panel.hide()
+	run_action = ""
+	player.controls_enabled = not paused and not seated
+	crosshair.visible = not paused and not seated
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if player.controls_enabled else Input.MOUSE_MODE_VISIBLE
+
+func confirm_run_action() -> void:
+	if not run_panel.visible or paused or run_confirm.disabled:
+		return
+	if run_action == "enter":
+		if not run_game.start(run_revision):
+			return
+		exit_notice.title = "查看出口告示"
+		close_run_panel()
+		travel("tavern")
+	elif run_action == "extract":
+		if not run_game.extract(run_revision):
+			return
+		close_run_panel()
+		travel("stash")
+	elif run_action == "reset":
+		if run_game.reset_demo(run_revision):
+			refresh_economy()
+			show_run_panel("enter")

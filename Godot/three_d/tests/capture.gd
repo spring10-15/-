@@ -19,7 +19,8 @@ func run() -> void:
 	await create_timer(0.85).timeout
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png(output.path_join("case-closed-runtime.png"))
-	world.travel("tavern")
+	world.show_run_panel("enter")
+	world.confirm_run_action()
 	for i in range(30):
 		await process_frame
 	await RenderingServer.frame_post_draw

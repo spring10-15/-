@@ -1,5 +1,5 @@
 // Run only when intentionally refreshing the 3D migration baseline.
 import fs from 'node:fs';
-import {TABLES, OPPONENTS} from '../../../src/data.js';
-fs.writeFileSync(new URL('../rules/content.json', import.meta.url), JSON.stringify({tables: TABLES, opponents: OPPONENTS}, null, 2) + '\n');
-console.log('Synced 4 table definitions and 8 opponent profiles from browser content.');
+import {TABLES, OPPONENTS, TAVERN_SCENES, STARTING_VAULT, STANDARD_BANKROLL} from '../../../src/data.js';
+fs.writeFileSync(new URL('../rules/content.json', import.meta.url), JSON.stringify({tables: TABLES, opponents: OPPONENTS, scenes: TAVERN_SCENES, startingVault: STARTING_VAULT, standardBankroll: STANDARD_BANKROLL}, null, 2) + '\n');
+console.log('Synced 4 table definitions 8 opponent profiles and run economy from browser content.');

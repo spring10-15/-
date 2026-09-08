@@ -105,10 +105,10 @@ static func cards_text(cards: Array) -> String:
 		parts.append(card_text(card))
 	return "  ".join(parts)
 
-func pregame() -> void:
+func pregame(cash := 0) -> void:
 	header.text = "货运桌 · 本桌 2 手"
 	status.text = "每席 60 筹码  ·  小盲 10 / 大盲 20  ·  每手首次加注少付 10"
-	hand.text = "独立牌桌试玩，不影响长期资产"
+	hand.text = "随身现金 %d · 开始时扣除买入 60，离桌返还剩余筹码" % cash
 	history.text = ""
 	opponent_left.text = "码头吹牛客"
 	opponent_right.text = "账房先生"

@@ -13,13 +13,21 @@ func run() -> void:
 	root.add_child(world)
 	await physics_frame
 	world.set_process(false)
-	world.travel("tavern")
+	world.show_run_panel("enter")
+	world.confirm_run_action()
 	world.player.position = Vector3(9.55, 0.02, 1.15)
 	world.player.camera.look_at(world.table_target.global_position)
 	for i in range(5):
 		await physics_frame
 	verify(world.request_action(world.table_target), "Player seats through actual ray interaction")
+	verify(world.run_game.vault == 900 and world.run_game.cash == 300, "Entering tavern transfers 300 from vault")
+	world.pause_game()
+	world.toggle_pause()
+	verify(not world.paused and world.seated and world.seat_panel.visible, "Esc resumes a pregame pause without trapping the player")
 	world.start_table(301)
+	verify(world.run_game.cash == 240, "Starting table pays buy-in once")
+	world.start_table(302)
+	verify(world.run_game.cash == 240, "Repeated start cannot charge twice")
 	verify(world.table_game != null, "Start creates a real table")
 	world.leave_seat()
 	verify(world.seated, "Cannot leave while table remains active")
@@ -63,8 +71,33 @@ func run() -> void:
 	for person in world.table_game.state.players:
 		bankroll += person.stack
 	verify(bankroll == 180, "End-of-table chips sum to original bankrolls")
+	var final_stack: int = world.table_game.state.players[0].stack
 	world.seat_panel.leave_button.pressed.emit()
 	verify(not world.seated and world.table_game == null and world.player.camera.current, "Leave restores exploration and clears table session")
+	verify(world.run_game.cash == 240 + final_stack, "Leaving returns actual final stack to run cash")
+	world.leave_seat()
+	verify(world.run_game.cash == 240 + final_stack, "Repeated leave does not duplicate cash")
+	world.player.position = Vector3(9.55, 0.02, 1.15)
+	world.player.camera.look_at(world.table_target.global_position)
+	for i in range(5):
+		await physics_frame
+	verify(not world.request_action(world.table_target), "Completed table cannot be bought into twice")
+	world.player.position = Vector3(8.0, 0.02, 2.55)
+	world.player.camera.look_at(world.exit_notice.global_position)
+	for i in range(5):
+		await physics_frame
+	verify(world.request_action(world.exit_notice), "Discover exit through real scene interaction")
+	var door: Area3D = world.get_node("Tavern/DoorTarget")
+	world.player.position = Vector3(8.0, 0.02, 1.65)
+	world.player.camera.look_at(door.global_position)
+	for i in range(5):
+		await physics_frame
+	verify(world.request_action(door), "Exit door opens quote")
+	var net: int = world.run_game.cash - 24 - int(floor(world.run_game.cash * 0.12))
+	world.run_confirm.pressed.emit()
+	verify(world.current_room == "stash" and world.run_game.vault == 900 + net and not world.run_game.active, "Exit button settles cash and returns to stash")
+	world.run_confirm.pressed.emit()
+	verify(world.run_game.vault == 900 + net, "Duplicate exit input cannot pay twice")
 	var report := {"checks": checks, "failed": failures.size(), "failures": failures, "transitions": frames}
 	var file := FileAccess.open(output.path_join("table-integration.json"), FileAccess.WRITE)
 	file.store_string(JSON.stringify(report, "  "))

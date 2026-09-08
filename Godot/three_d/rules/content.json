@@ -247,5 +247,81 @@
         "patternPunish": 0.06
       }
     }
-  }
+  },
+  "scenes": {
+    "smoky-den": {
+      "id": "smoky-den",
+      "name": "Smoky Den",
+      "bgm": "tavern-floor.ogg",
+      "bgImage": "tavern-smoky-den-bg.png",
+      "uiTone": "warm",
+      "atmosphere": "A dimly lit den filled with smoke and the sound of chips clinking.",
+      "heatReductionCost": 24,
+      "generalExtractionFlatFee": 24,
+      "generalExtractionRate": 0.12,
+      "lockdownSurcharge": 45,
+      "fixedRouteReserveDiscount": 10,
+      "fixedRouteGraceSearches": 2,
+      "entryHeatBonus": 0,
+      "intelBonus": 0,
+      "forcedExitLossFactor": 0.75,
+      "hiddenRouteRevealDiscount": 0
+    },
+    "high-rise-suite": {
+      "id": "high-rise-suite",
+      "name": "High-Rise Suite",
+      "bgm": "tavern-high-rise-suite.ogg",
+      "bgImage": "tavern-high-rise-suite-bg.png",
+      "uiTone": "cool",
+      "atmosphere": "A private suite above the city where money talks softly and pressure lingers.",
+      "heatReductionCost": 36,
+      "generalExtractionFlatFee": 42,
+      "generalExtractionRate": 0.18,
+      "lockdownSurcharge": 70,
+      "fixedRouteReserveDiscount": 0,
+      "fixedRouteGraceSearches": 3,
+      "entryHeatBonus": 0,
+      "intelBonus": 0,
+      "forcedExitLossFactor": 0.88,
+      "hiddenRouteRevealDiscount": 0
+    },
+    "rooftop-club": {
+      "id": "rooftop-club",
+      "name": "Rooftop Club",
+      "bgm": "tavern-rooftop-club.ogg",
+      "bgImage": "tavern-rooftop-club-bg.png",
+      "uiTone": "good",
+      "atmosphere": "A social rooftop game where style, risk, and noise blur together.",
+      "heatReductionCost": 30,
+      "generalExtractionFlatFee": 28,
+      "generalExtractionRate": 0.13,
+      "lockdownSurcharge": 60,
+      "fixedRouteReserveDiscount": 5,
+      "fixedRouteGraceSearches": 1,
+      "entryHeatBonus": 1,
+      "intelBonus": 0,
+      "forcedExitLossFactor": 0.68,
+      "hiddenRouteRevealDiscount": 5
+    },
+    "neon-poker-club": {
+      "id": "neon-poker-club",
+      "name": "Neon Poker Club",
+      "bgm": "tavern-neon-poker-club.ogg",
+      "bgImage": "tavern-neon-poker-club-bg.png",
+      "uiTone": "warn",
+      "atmosphere": "A synthetic late-night club where reads feel digital and every move leaves a trace.",
+      "heatReductionCost": 30,
+      "generalExtractionFlatFee": 34,
+      "generalExtractionRate": 0.14,
+      "lockdownSurcharge": 55,
+      "fixedRouteReserveDiscount": 0,
+      "fixedRouteGraceSearches": 2,
+      "entryHeatBonus": 0,
+      "intelBonus": 1,
+      "forcedExitLossFactor": 0.72,
+      "hiddenRouteRevealDiscount": 10
+    }
+  },
+  "startingVault": 1200,
+  "standardBankroll": 300
 }

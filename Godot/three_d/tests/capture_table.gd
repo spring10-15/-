@@ -11,7 +11,9 @@ func run() -> void:
 	root.add_child(world)
 	await physics_frame
 	world.set_process(false)
-	world.travel("tavern")
+	world.show_run_panel("enter")
+	await snap("run-departure")
+	world.confirm_run_action()
 	world.player.position = Vector3(9.55, 0.02, 1.15)
 	world.player.camera.look_at(world.table_target.global_position)
 	for i in range(5):
@@ -43,5 +45,12 @@ func run() -> void:
 			await snap("poker-flop")
 			snapped = true
 	await snap("poker-result")
+	world.leave_seat()
+	world.run_game.discover_exit()
+	world.refresh_economy()
+	world.show_run_panel("extract")
+	await snap("run-extraction")
+	world.confirm_run_action()
+	await snap("run-return")
 	print("TABLE_CAPTURE_OK")
 	quit()
