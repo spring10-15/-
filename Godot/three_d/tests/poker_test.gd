@@ -66,7 +66,7 @@ func _initialize() -> void:
 		verify(result.awards.a + result.awards.b + result.awards.c == amounts[0] + amounts[1] + amounts[2], "Chip conservation %d" % i)
 	var output := ProjectSettings.globalize_path("res://../output/3d")
 	DirAccess.make_dir_recursive_absolute(output)
-	var report := {"checks":checked,"failed":failed.size(),"failures":failed,"scope":"Hand evaluation, comparison, browser-compatible RNG/shuffle and side-pot accounting; full betting state machine not yet migrated"}
+	var report := {"checks":checked,"failed":failed.size(),"failures":failed,"scope":"Hand evaluation, comparison, browser-compatible RNG/shuffle and side-pot accounting; betting and UI are verified by separate table tests"}
 	var file := FileAccess.open(output.path_join("poker-rules.json"), FileAccess.WRITE)
 	file.store_string(JSON.stringify(report, "  "))
 	file.close()

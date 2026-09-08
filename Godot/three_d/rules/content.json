@@ -1,0 +1,251 @@
+{
+  "tables": {
+    "cargo-table": {
+      "id": "cargo-table",
+      "name": "Cargo Table",
+      "role": "Onboarding, first profit, first meaningful read",
+      "buyIn": 60,
+      "risk": "Low",
+      "heatGain": 1,
+      "smallBlind": 10,
+      "openBet": 20,
+      "raiseIncrement": 20,
+      "hands": 2,
+      "unlocksAfter": null,
+      "opponentIds": [
+        "dock-braggart",
+        "ledger-clerk"
+      ],
+      "publicInfo": {
+        "buyIn": 60,
+        "risk": "Low"
+      },
+      "hiddenInfo": {
+        "rule": "The first aggressive action of each hand costs 10 less for the acting player.",
+        "opponents": "Dock Braggart and Ledger Clerk",
+        "reward": "Positive results can yield low or mid-tier valuables. First clears strongly bias toward the Ivory Chip."
+      },
+      "firstAggressionDiscount": 10,
+      "baseRewardPool": [
+        "old-silver-lighter",
+        "ivory-chip",
+        "ruby-cufflink"
+      ],
+      "signatureReward": "ivory-chip"
+    },
+    "ledger-cellar": {
+      "id": "ledger-cellar",
+      "name": "Ledger Cellar",
+      "role": "Mid-stakes pressure room with quieter opponents and tighter reads",
+      "buyIn": 90,
+      "risk": "Medium",
+      "heatGain": 1,
+      "smallBlind": 15,
+      "openBet": 30,
+      "raiseIncrement": 30,
+      "hands": 2,
+      "unlocksAfter": "cargo-table",
+      "opponentIds": [
+        "river-shark",
+        "velvet-rook"
+      ],
+      "publicInfo": {
+        "buyIn": 90,
+        "risk": "Medium"
+      },
+      "hiddenInfo": {
+        "rule": "The room is quieter, but every table tool use raises 1 extra heat. Soft reads matter more than brute pressure.",
+        "opponents": "River Shark and Velvet Rook",
+        "reward": "Positive results tend to pay out layered valuables that bridge the run into Mirror Hall."
+      },
+      "tableToolHeatBonus": 1,
+      "baseRewardPool": [
+        "ruby-cufflink",
+        "pearl-necklace",
+        "emerald-brooch"
+      ],
+      "signatureReward": "pearl-necklace"
+    },
+    "mirror-hall": {
+      "id": "mirror-hall",
+      "name": "Mirror Hall",
+      "role": "Main risk-reward table for the slice",
+      "buyIn": 120,
+      "risk": "Medium-High",
+      "heatGain": 2,
+      "smallBlind": 20,
+      "openBet": 40,
+      "raiseIncrement": 40,
+      "hands": 3,
+      "unlocksAfter": "ledger-cellar",
+      "opponentIds": [
+        "calm-widow",
+        "smiling-knife"
+      ],
+      "publicInfo": {
+        "buyIn": 120,
+        "risk": "Medium-High"
+      },
+      "hiddenInfo": {
+        "rule": "You may bring at most one valuable as collateral. Winning the final hand with collateral unlocks the best reward.",
+        "opponents": "Calm Widow and Smiling Knife",
+        "reward": "Positive results grant high-tier valuables. The collateral line can pay out the Antique Commemorative Coin."
+      },
+      "allowCollateral": true,
+      "baseRewardPool": [
+        "gold-cased-watch",
+        "antique-coin",
+        "sealed-bond"
+      ],
+      "signatureReward": "antique-coin"
+    },
+    "embers-table": {
+      "id": "embers-table",
+      "name": "Embers Table",
+      "role": "Late-run high stakes room where collateral and exposed goods both matter",
+      "buyIn": 160,
+      "risk": "High",
+      "heatGain": 2,
+      "smallBlind": 25,
+      "openBet": 50,
+      "raiseIncrement": 50,
+      "hands": 3,
+      "unlocksAfter": "mirror-hall",
+      "opponentIds": [
+        "house-viper",
+        "ash-smuggler"
+      ],
+      "publicInfo": {
+        "buyIn": 160,
+        "risk": "High"
+      },
+      "hiddenInfo": {
+        "rule": "Luxury collateral is live here. If you close the room in profit, the room cools 1 heat before extraction math.",
+        "opponents": "House Viper and Ash Smuggler",
+        "reward": "The final room pays the heaviest luxury pieces, but it punishes weak exits harder than the others."
+      },
+      "allowCollateral": true,
+      "winHeatRelief": 1,
+      "baseRewardPool": [
+        "obsidian-idol",
+        "vault-promissory",
+        "emerald-brooch"
+      ],
+      "signatureReward": "vault-promissory"
+    }
+  },
+  "opponents": {
+    "dock-braggart": {
+      "id": "dock-braggart",
+      "name": "Dock Braggart",
+      "seatLabel": "Dock Braggart",
+      "archetype": "Maniac",
+      "intro": "Too loud for the cards he is actually holding.",
+      "profile": {
+        "aggression": 0.76,
+        "caution": 0.18,
+        "bluff": 0.24,
+        "finalHandSpike": 0.02,
+        "patternPunish": 0
+      }
+    },
+    "ledger-clerk": {
+      "id": "ledger-clerk",
+      "name": "Ledger Clerk",
+      "seatLabel": "Ledger Clerk",
+      "archetype": "Nit",
+      "intro": "Counts the room twice before he risks one chip.",
+      "profile": {
+        "aggression": 0.28,
+        "caution": 0.74,
+        "bluff": 0.05,
+        "finalHandSpike": 0,
+        "patternPunish": 0
+      }
+    },
+    "calm-widow": {
+      "id": "calm-widow",
+      "name": "Calm Widow",
+      "seatLabel": "Calm Widow",
+      "archetype": "Shark",
+      "intro": "Patient, precise, and excellent at noticing repetition.",
+      "profile": {
+        "aggression": 0.48,
+        "caution": 0.62,
+        "bluff": 0.08,
+        "finalHandSpike": 0.12,
+        "patternPunish": 0.18
+      }
+    },
+    "smiling-knife": {
+      "id": "smiling-knife",
+      "name": "Smiling Knife",
+      "seatLabel": "Smiling Knife",
+      "archetype": "Shark",
+      "intro": "Coasts early, then leans on the table when the pot matters.",
+      "profile": {
+        "aggression": 0.5,
+        "caution": 0.42,
+        "bluff": 0.12,
+        "finalHandSpike": 0.24,
+        "patternPunish": 0.06
+      }
+    },
+    "river-shark": {
+      "id": "river-shark",
+      "name": "River Shark",
+      "seatLabel": "River Shark",
+      "archetype": "Shark",
+      "intro": "Looks passive until the pot starts smelling like a sure thing.",
+      "profile": {
+        "aggression": 0.5,
+        "caution": 0.42,
+        "bluff": 0.09,
+        "finalHandSpike": 0.06,
+        "patternPunish": 0.05
+      }
+    },
+    "velvet-rook": {
+      "id": "velvet-rook",
+      "name": "Velvet Rook",
+      "seatLabel": "Velvet Rook",
+      "archetype": "Calling Station",
+      "intro": "Protects small edges and only turns sharp once the room gets narrow.",
+      "profile": {
+        "aggression": 0.34,
+        "caution": 0.6,
+        "bluff": 0.1,
+        "finalHandSpike": 0.05,
+        "patternPunish": 0.07
+      }
+    },
+    "house-viper": {
+      "id": "house-viper",
+      "name": "House Viper",
+      "seatLabel": "House Viper",
+      "archetype": "Shark",
+      "intro": "Never looks rushed, but the room tightens when he finally presses.",
+      "profile": {
+        "aggression": 0.51,
+        "caution": 0.5,
+        "bluff": 0.08,
+        "finalHandSpike": 0.11,
+        "patternPunish": 0.08
+      }
+    },
+    "ash-smuggler": {
+      "id": "ash-smuggler",
+      "name": "Ash Smuggler",
+      "seatLabel": "Ash Smuggler",
+      "archetype": "Fish",
+      "intro": "Hides under smoke and only shows teeth when the line looks soft.",
+      "profile": {
+        "aggression": 0.42,
+        "caution": 0.46,
+        "bluff": 0.15,
+        "finalHandSpike": 0.07,
+        "patternPunish": 0.06
+      }
+    }
+  }
+}

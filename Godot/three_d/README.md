@@ -1,4 +1,4 @@
-# 3D 原型 · 第一阶段基础工程
+# 3D 原型 · 首桌可玩版
 
 ## 运行
 
@@ -7,7 +7,10 @@
 - WASD：行走；鼠标：观察。
 - 接近物件并将准星对准它，按 E 交互；有效距离为 2 米，墙体会阻挡交互。
 - 皮箱可以开合；右侧房门进入烟雾酒馆；酒馆入口可以返回。
-- 靠近牌桌前沿按 E 入座，点击“离开牌桌”或按 Esc 返回。
+- 靠近牌桌前沿按 E 入座，点击“开始牌局”；每席 60 筹码，最多两手。
+- 通过按钮弃牌、过牌、跟注、加注或全押；加注输入框表示加到的总额。
+- 牌局开始后不能中途离座；一手结束点“下一手”，整桌结束点“离开牌桌”。
+- 开局前可以按 Esc 离座，开局后 Esc 暂停牌局。
 - Esc 暂停／恢复；切出窗口自动暂停。
 
 ## 当前完成
@@ -16,8 +19,9 @@
 - 藏匿点与烟雾酒馆的可行走粗模空间、碰撞、门切换。
 - 视线交互、箱盖动作、入座与离座、暂停。
 - 独立的牌型比较、浏览器兼容随机数／洗牌、边池计算模块及对照测试。
+- 盲注、行动队列、两手推进、本地 AI 对手、全押与摊牌分账、三维动态牌面。
 
-**目前牌局尚未接入界面，不能下注或完成一局游戏。** 酒馆还是灰盒；Blender 的三张图像贴图已保留，程序化材质暂用 PBR 基础色，烘焙、人物、音效、存档、经济和正式美术仍待制作。此版不是最终画质样板。
+**货运桌已能实际游玩；目前为独立牌桌试玩，不影响长期资产。** 酒馆还是灰盒；Blender 的三张图像贴图已保留，程序化材质暂用 PBR 基础色，烘焙、人物、音效、存档、局级经济、道具、撤离和正式美术仍待制作。此版不是最终画质样板。
 
 ## 技术入口
 
@@ -53,3 +57,14 @@ node Godot/three_d/tests/generate_poker_fixtures.mjs
 ```
 
 截图来自引擎实际帧缓冲；此操作会临时打开并关闭游戏窗口。
+
+## 首桌新增验证
+
+```sh
+node Godot/three_d/tests/generate_table_fixtures.mjs
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path Godot --script res://three_d/tests/table_test.gd
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path Godot --script res://three_d/tests/table_parity.gd
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path Godot --script res://three_d/tests/table_integration.gd -- --test
+```
+
+与旧网页实现的明确差异和范围，见项目内 `docs/3d-production/table-migration.md`。

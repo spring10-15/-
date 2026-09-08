@@ -1,14 +1,21 @@
 extends Node3D
-## First integration milestone: real GLB, traversal, occluded targeting, lid and seating.
-## No currency or poker simulation lives in this presentation prototype.
+## Scene presentation and timing. Table rules own all bets and chip transfers.
 const PlayerController = preload("res://three_d/scripts/player.gd")
 const Interactable = preload("res://three_d/scripts/interactable.gd")
+const TableRules = preload("res://three_d/rules/table.gd")
+const OpponentRules = preload("res://three_d/rules/opponent.gd")
+const TableHUD = preload("res://three_d/scripts/table_hud.gd")
 const STASH_ASSET = preload("res://three_d/assets/stash.glb")
 var player: CharacterBody3D
 var title_label: Label
 var hint_label: Label
 var pause_panel: PanelContainer
-var seat_panel: PanelContainer
+var seat_panel: Control
+var table_game: RefCounted
+var table_content: Dictionary
+var table_delay := 0.0
+var cards_root: Node3D
+var explore_instructions: Label
 var crosshair: Label
 var case_target: Area3D
 var door_target: Area3D
@@ -26,6 +33,7 @@ var readiness := false
 var materials := {}
 
 func _ready() -> void:
+	table_content = JSON.parse_string(FileAccess.get_file_as_string("res://three_d/rules/content.json"))
 	configure_input()
 	make_materials()
 	build_lighting()
@@ -150,8 +158,9 @@ func build_tavern() -> void:
 		box(room, "TableLeg", Vector3(x, 0.35, -0.8), Vector3(0.1, 0.7, 0.1), "wood")
 	for x in [-1.1, 0.25]:
 		box(room, "OpponentChair", Vector3(x, 0.45, -1.9), Vector3(0.52, 0.9, 0.52), "dark")
-	for i in range(5):
-		box(room, "Card", Vector3(-0.89 + i * 0.21, 0.86, -0.8), Vector3(0.15, 0.01, 0.23), "ivory", false)
+	cards_root = Node3D.new()
+	cards_root.name = "LiveCards"
+	room.add_child(cards_root)
 	table_target = target(room, "TableSeat", Vector3(-0.45, 1.0, 0.04), Vector3(1.6, 0.50, 0.28), "sit", "坐到牌桌前")
 	make_door(room, Vector3(-2.83, 1.1, 1.65), "返回藏匿点", "enter_stash")
 	seat_camera = Camera3D.new()
@@ -215,8 +224,8 @@ func build_ui() -> void:
 	layer.add_child(ui)
 	title_label = label(ui, "藏匿点", 30)
 	title_label.position = Vector2(32, 25)
-	var instructions := label(ui, "WASD 行走   ·   鼠标观察   ·   E 交互   ·   Esc 暂停", 18)
-	instructions.position = Vector2(32, 67)
+	explore_instructions = label(ui, "WASD 行走   ·   鼠标观察   ·   E 交互   ·   Esc 暂停", 18)
+	explore_instructions.position = Vector2(32, 67)
 	crosshair = label(ui, "+", 22)
 	crosshair.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	crosshair.position -= Vector2(7, 15)
@@ -227,7 +236,12 @@ func build_ui() -> void:
 	hint_label.offset_top = -105
 	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pause_panel = make_panel(ui, "已暂停", "", "继续探索", resume)
-	seat_panel = make_panel(ui, "牌桌", "本桌暂未开局。", "离开牌桌", leave_seat)
+	seat_panel = TableHUD.new()
+	ui.add_child(seat_panel)
+	seat_panel.start_requested.connect(start_table)
+	seat_panel.action_requested.connect(play_action)
+	seat_panel.continue_requested.connect(continue_hand)
+	seat_panel.leave_requested.connect(leave_seat)
 	pause_panel.hide()
 	seat_panel.hide()
 
@@ -297,7 +311,9 @@ func request_action(anchor: Area3D) -> bool:
 			player.controls_enabled = false
 			player.velocity = Vector3.ZERO
 			seat_camera.current = true
+			seat_panel.pregame()
 			seat_panel.show()
+			explore_instructions.hide()
 			crosshair.hide()
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		_:
@@ -314,9 +330,12 @@ func travel(destination: String) -> void:
 	player.update_focus()
 
 func leave_seat() -> void:
-	if not seated:
+	if paused or not seated or (table_game != null and table_game.state.status != "finished"):
 		return
+	table_game = null
+	clear_cards()
 	seated = false
+	explore_instructions.show()
 	player.global_transform = return_transform
 	player.controls_enabled = true
 	player.camera.current = true
@@ -325,26 +344,119 @@ func leave_seat() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func toggle_pause() -> void:
-	if seated:
+	if seated and table_game == null:
 		leave_seat()
 		return
 	if paused:
 		resume()
 		return
+	pause_game()
+
+func pause_game() -> void:
 	paused = true
 	player.controls_enabled = false
+	if seated:
+		seat_panel.hide()
+	var buttons := pause_panel.find_children("*", "Button", true, false)
+	buttons[0].text = "继续牌局" if seated else "继续探索"
 	pause_panel.show()
 	crosshair.hide()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func resume() -> void:
 	paused = false
-	player.controls_enabled = true
+	player.controls_enabled = not seated
 	pause_panel.hide()
-	crosshair.show()
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if seated:
+		seat_panel.show()
+	crosshair.visible = not seated
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if seated else Input.MOUSE_MODE_CAPTURED
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT and readiness and not OS.get_cmdline_user_args().has("--test"):
-		if not paused and not seated:
-			toggle_pause()
+		if not paused:
+			pause_game()
+
+func start_table(seed_value: int = -1) -> void:
+	if not seated or table_game != null or paused:
+		return
+	table_game = TableRules.new()
+	table_game.start(table_content.tables["cargo-table"], int(Time.get_ticks_usec() % 2147483647) if seed_value < 0 else seed_value)
+	table_delay = 0.45
+	refresh_table()
+
+func play_action(kind: String, expected_revision: int, raise_target: int = -1) -> void:
+	if paused or table_game == null or table_delay > 0:
+		return
+	if table_game.act("player", kind, expected_revision, raise_target):
+		table_delay = 0.45
+		refresh_table()
+
+func continue_hand(expected_revision: int) -> void:
+	if not paused and table_game != null and table_game.next_hand(expected_revision):
+		table_delay = 0.45
+		refresh_table()
+
+func _process(delta: float) -> void:
+	if table_game == null or paused or not seated:
+		return
+	if table_delay > 0:
+		table_delay = maxf(0, table_delay - delta)
+		if table_delay == 0:
+			seat_panel.refresh(table_game.public_state(), false)
+		return
+	if table_game.state.status != "playing" or table_game.state.currentActorId == "player":
+		return
+	advance_table_beat()
+
+func advance_table_beat() -> void:
+	if table_game == null or paused or table_game.state.status != "playing":
+		return
+	var actor_id: String = table_game.state.currentActorId
+	if actor_id.is_empty():
+		table_game.advance(table_game.revision)
+	elif actor_id != "player":
+		var actor: Dictionary = table_game.find_player(actor_id)
+		var decision := OpponentRules.choose(table_game.state, actor, table_game.legal_actions(actor_id), table_content.opponents[actor_id], table_game.rng.next())
+		table_game.act(actor_id, decision, table_game.revision)
+	else:
+		return
+	table_delay = 0.55
+	refresh_table()
+
+func refresh_table() -> void:
+	var view: Dictionary = table_game.public_state()
+	seat_panel.refresh(view, table_delay > 0)
+	clear_cards()
+	for i in range(view.community.size()):
+		draw_card(view.community[i], Vector3(-0.89 + i * 0.22, 0.866, -0.80))
+	for i in range(view.players[0].holeCards.size()):
+		draw_card(view.players[0].holeCards[i], Vector3(-0.60 + i * 0.22, 0.866, -0.17))
+	# Bounded visual stacks; exact chip amounts always remain in the HUD.
+	for i in range(mini(12, int(view.pot) / 10)):
+		var chip := MeshInstance3D.new()
+		var mesh := CylinderMesh.new()
+		mesh.top_radius = 0.032
+		mesh.bottom_radius = 0.032
+		mesh.height = 0.01
+		chip.mesh = mesh
+		chip.material_override = materials["brass"]
+		chip.position = Vector3(-0.40, 0.87 + i * 0.012, -1.16)
+		cards_root.add_child(chip)
+
+func clear_cards() -> void:
+	for child in cards_root.get_children():
+		cards_root.remove_child(child)
+		child.queue_free()
+
+func draw_card(card: Dictionary, pos: Vector3) -> void:
+	var node := box(cards_root, "Card", pos, Vector3(0.18, 0.008, 0.25), "ivory", false)
+	var text := Label3D.new()
+	text.text = TableHUD.card_text(card)
+	text.font_size = 64
+	text.pixel_size = 0.00125
+	text.outline_size = 0
+	text.modulate = Color("b92329") if card.suit in ["H", "D"] else Color("18221f")
+	text.position = Vector3(0, 0.006, 0)
+	text.rotation.x = -PI / 2
+	node.add_child(text)
