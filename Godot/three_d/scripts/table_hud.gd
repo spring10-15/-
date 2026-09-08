@@ -3,7 +3,8 @@ signal start_requested
 signal action_requested(kind: String, revision: int, raise_target: int)
 signal continue_requested(revision: int)
 signal leave_requested
-const NAMES := {"player": "你", "dock-braggart": "码头吹牛客", "ledger-clerk": "账房先生"}
+const NAMES := {"player": "你", "dock-braggart": "码头吹牛客", "ledger-clerk": "账房先生", "river-shark": "河道老鲨", "velvet-rook": "绒衣新客"}
+const TABLE_NAMES := {"cargo-table": "货运桌", "ledger-cellar": "账房地窖"}
 const STREETS := {"preflop": "翻牌前", "flop": "翻牌", "turn": "转牌", "river": "河牌"}
 const ACTIONS := {"fold": "弃牌", "check": "过牌", "call": "跟注", "raise": "加注", "all-in": "全押"}
 var header: Label
@@ -105,13 +106,16 @@ static func cards_text(cards: Array) -> String:
 		parts.append(card_text(card))
 	return "  ".join(parts)
 
-func pregame(cash := 0) -> void:
-	header.text = "货运桌 · 本桌 2 手"
-	status.text = "每席 60 筹码  ·  小盲 10 / 大盲 20  ·  每手首次加注少付 10"
-	hand.text = "随身现金 %d · 开始时扣除买入 60，离桌返还剩余筹码" % cash
+func pregame(cash := 0, definition: Dictionary = {}) -> void:
+	if definition.is_empty():
+		return
+	header.text = "%s · 本桌 %d 手" % [TABLE_NAMES[definition.id], definition.hands]
+	status.text = "每席 %d 筹码 · 小盲 %d / 大盲 %d" % [definition.buyIn, definition.smallBlind, definition.openBet]
+	status.text += " · 每手首次加注少付 10" if definition.id == "cargo-table" else " · 道具与物品奖励尚未接入"
+	hand.text = "随身现金 %d · 开始时扣除买入 %d，离桌返还剩余筹码" % [cash, definition.buyIn]
 	history.text = ""
-	opponent_left.text = "码头吹牛客"
-	opponent_right.text = "账房先生"
+	opponent_left.text = NAMES[definition.opponentIds[0]]
+	opponent_right.text = NAMES[definition.opponentIds[1]]
 	for button in action_buttons.values():
 		button.hide()
 	raise_amount.hide()
@@ -125,7 +129,7 @@ func refresh(view: Dictionary, locked := false) -> void:
 	var your_turn: bool = playing and view.currentActorId == "player" and not locked
 	var you: Dictionary = view.players[0]
 	var owed := maxi(0, view.currentBet - you.currentBet)
-	header.text = "货运桌 · 第 %d / %d 手 · %s · 底池 %d" % [view.handNumber, view.totalHands, STREETS[view.street], view.pot]
+	header.text = "%s · 第 %d / %d 手 · %s · 底池 %d" % [TABLE_NAMES[view.tableDef.id], view.handNumber, view.totalHands, STREETS[view.street], view.pot]
 	for i in [1, 2]:
 		var seat: Dictionary = view.players[i]
 		var state_text: String = "已弃牌" if seat.folded else ("全押" if seat.stack == 0 else "本轮已投 %d" % seat.currentBet)

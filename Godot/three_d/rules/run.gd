@@ -31,21 +31,26 @@ func start(expected_revision: int) -> bool:
 	revision += 1
 	return true
 
-func table_blocked_reason() -> String:
+func table_blocked_reason(table_id := "cargo-table") -> String:
+	if table_id not in ["cargo-table", "ledger-cellar"]:
+		return "该牌桌尚未开放"
 	if not active:
 		return "先从藏匿点进入酒馆"
 	if table != null:
 		return "当前牌桌尚未结算"
-	if "cargo-table" in completed:
-		return "本局货运桌已完成，请寻找出口撤离"
-	if cash < int(content.tables["cargo-table"].buyIn):
-		return "随身现金不足 60，无法买入"
+	if table_id in completed:
+		return "本局已完成此桌，可继续探索或撤离"
+	var definition: Dictionary = content.tables[table_id]
+	if definition.unlocksAfter != null and definition.unlocksAfter not in completed:
+		return "先完成货运桌并离座，再进入账房地窖"
+	if cash < int(definition.buyIn):
+		return "随身现金不足 %d，无法买入" % int(definition.buyIn)
 	return ""
 
-func enter_table(seed_value: int, expected_revision: int) -> RefCounted:
-	if expected_revision != revision or not table_blocked_reason().is_empty():
+func enter_table(seed_value: int, expected_revision: int, table_id := "cargo-table") -> RefCounted:
+	if expected_revision != revision or not table_blocked_reason(table_id).is_empty():
 		return null
-	var definition: Dictionary = content.tables["cargo-table"]
+	var definition: Dictionary = content.tables[table_id]
 	cash -= int(definition.buyIn)
 	heat = mini(6, heat + int(definition.heatGain) + int(content.scenes["smoky-den"].entryHeatBonus))
 	table = TableRules.new()

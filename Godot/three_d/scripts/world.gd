@@ -40,6 +40,9 @@ var return_transform: Transform3D
 var seat_camera: Camera3D
 var readiness := false
 var materials := {}
+var table_rooms := {}
+var active_table_id := "cargo-table"
+var ledger_door: Area3D
 
 func _ready() -> void:
 	table_content = JSON.parse_string(FileAccess.get_file_as_string("res://three_d/rules/content.json"))
@@ -49,6 +52,8 @@ func _ready() -> void:
 	build_lighting()
 	build_stash()
 	build_tavern()
+	build_tavern("LedgerCellar", 20.0)
+	select_table_room("Tavern")
 	player = PlayerController.new()
 	player.name = "Player"
 	add_child(player)
@@ -153,8 +158,8 @@ func build_stash() -> void:
 	point_light(room, Vector3(0.53, 1.39, -1.25), Color("ffc580"), 1.7, 4)
 	point_light(room, Vector3(2.45, 2.1, -1.4), Color("83a6ce"), 0.55, 4)
 
-func build_tavern() -> void:
-	var room := room_shell(Vector3(10, 0, 0), "Tavern")
+func build_tavern(room_name := "Tavern", offset := 10.0) -> void:
+	var room := room_shell(Vector3(offset, 0, 0), room_name)
 	box(room, "BarCounter", Vector3(2.0, 0.57, -1.25), Vector3(0.65, 1.14, 2.8), "wood")
 	box(room, "BarTop", Vector3(2.0, 1.16, -1.25), Vector3(0.86, 0.10, 3.0), "brass")
 	for z in [-2.2, -1.2, -0.2]:
@@ -173,24 +178,29 @@ func build_tavern() -> void:
 	cards_root.name = "LiveCards"
 	room.add_child(cards_root)
 	table_target = target(room, "TableSeat", Vector3(-0.45, 1.0, 0.04), Vector3(1.6, 0.50, 0.28), "sit", "坐到牌桌前")
-	make_door(room, Vector3(-2.83, 1.1, 1.65), "查看撤离费用", "enter_stash")
-	box(room, "ExitNotice", Vector3(-2.84, 1.6, 2.55), Vector3(0.04, 0.48, 0.55), "ivory", false)
-	var notice_text := Label3D.new()
-	notice_text.text = "EXIT\n出口告示"
-	notice_text.font_size = 48
-	notice_text.pixel_size = 0.002
-	notice_text.modulate = Color("18221f")
-	notice_text.outline_size = 0
-	notice_text.position = Vector3(-2.805, 1.6, 2.55)
-	notice_text.rotation.y = PI / 2
-	room.add_child(notice_text)
-	exit_notice = target(room, "ExitNoticeTarget", Vector3(-2.73, 1.6, 2.55), Vector3(0.16, 0.52, 0.59), "discover_exit", "查看出口告示")
+	if room_name == "Tavern":
+		make_door(room, Vector3(-2.83, 1.1, 1.65), "查看撤离费用", "enter_stash")
+		box(room, "ExitNotice", Vector3(-2.84, 1.6, 2.55), Vector3(0.04, 0.48, 0.55), "ivory", false)
+		var notice_text := Label3D.new()
+		notice_text.text = "EXIT\n出口告示"
+		notice_text.font_size = 48
+		notice_text.pixel_size = 0.002
+		notice_text.modulate = Color("18221f")
+		notice_text.outline_size = 0
+		notice_text.position = Vector3(-2.805, 1.6, 2.55)
+		notice_text.rotation.y = PI / 2
+		room.add_child(notice_text)
+		exit_notice = target(room, "ExitNoticeTarget", Vector3(-2.73, 1.6, 2.55), Vector3(0.16, 0.52, 0.59), "discover_exit", "查看出口告示")
+		ledger_door = make_door(room, Vector3(2.83, 1.1, 1.65), "前往账房地窖 · 需完成货运桌", "enter_ledger")
+	else:
+		make_door(room, Vector3(-2.83, 1.1, 1.65), "返回烟雾酒馆", "back_tavern")
 	seat_camera = Camera3D.new()
 	seat_camera.name = "SeatCamera"
 	room.add_child(seat_camera)
 	seat_camera.position = Vector3(-0.45, 1.42, 0.65)
 	seat_camera.rotation.x = -0.38
 	seat_camera.fov = 65
+	table_rooms[room_name] = {"cards": cards_root, "camera": seat_camera, "target": table_target}
 	point_light(room, Vector3(-0.45, 2.45, -0.8), Color("ffe1a8"), 2.2, 4.2)
 	point_light(room, Vector3(1.8, 2.4, -1.3), Color("d9b782"), 1.0, 4)
 
@@ -344,13 +354,20 @@ func request_action(anchor: Area3D) -> bool:
 			show_run_panel("enter")
 		"enter_stash":
 			show_run_panel("extract")
+		"enter_ledger":
+			if "cargo-table" not in run_game.completed:
+				hint_label.text = "先完成货运桌并离座"
+				return false
+			travel("ledger")
+		"back_tavern":
+			travel("tavern")
 		"discover_exit":
 			run_game.discover_exit()
 			exit_notice.title = "出口已确认 · 门口可查看撤离费用"
 			refresh_economy()
 			show_focus(anchor)
 		"sit":
-			var reason: String = run_game.table_blocked_reason()
+			var reason: String = run_game.table_blocked_reason(active_table_id)
 			if not reason.is_empty():
 				hint_label.text = reason
 				return false
@@ -359,7 +376,7 @@ func request_action(anchor: Area3D) -> bool:
 			player.controls_enabled = false
 			player.velocity = Vector3.ZERO
 			seat_camera.current = true
-			seat_panel.pregame(run_game.cash)
+			seat_panel.pregame(run_game.cash, table_content.tables[active_table_id])
 			seat_panel.show()
 			explore_instructions.hide()
 			crosshair.hide()
@@ -370,11 +387,12 @@ func request_action(anchor: Area3D) -> bool:
 
 func travel(destination: String) -> void:
 	current_room = destination
+	select_table_room("LedgerCellar" if destination == "ledger" else "Tavern")
 	player.velocity = Vector3.ZERO
-	player.position = Vector3(8.0, 0.05, 1.7) if destination == "tavern" else Vector3(1.95, 0.05, 1.7)
-	player.rotation = Vector3(0, -0.65 if destination == "tavern" else 0.55, 0)
+	player.position = Vector3(18.0 if destination == "ledger" else 8.0, 0.05, 1.7) if destination != "stash" else Vector3(1.95, 0.05, 1.7)
+	player.rotation = Vector3(0, -0.65 if destination != "stash" else 0.55, 0)
 	player.camera.rotation = Vector3(-0.10, 0, 0)
-	title_label.text = "烟雾酒馆" if destination == "tavern" else "藏匿点"
+	title_label.text = {"tavern": "烟雾酒馆", "ledger": "账房地窖", "stash": "藏匿点"}[destination]
 	player.update_focus()
 	refresh_economy()
 
@@ -435,7 +453,7 @@ func _notification(what: int) -> void:
 func start_table(seed_value: int = -1) -> void:
 	if not seated or table_game != null or paused:
 		return
-	table_game = run_game.enter_table(int(Time.get_ticks_usec() % 2147483647) if seed_value < 0 else seed_value, run_game.revision)
+	table_game = run_game.enter_table(int(Time.get_ticks_usec() % 2147483647) if seed_value < 0 else seed_value, run_game.revision, active_table_id)
 	if table_game == null:
 		return
 	refresh_economy()
@@ -580,3 +598,10 @@ func confirm_run_action() -> void:
 		if run_game.reset_demo(run_revision):
 			refresh_economy()
 			show_run_panel("enter")
+
+func select_table_room(room_name: String) -> void:
+	var setup: Dictionary = table_rooms[room_name]
+	cards_root = setup.cards
+	seat_camera = setup.camera
+	table_target = setup.target
+	active_table_id = "ledger-cellar" if room_name == "LedgerCellar" else "cargo-table"
