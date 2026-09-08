@@ -323,5 +323,337 @@
     }
   },
   "startingVault": 1200,
-  "standardBankroll": 300
+  "standardBankroll": 300,
+  "items": {
+    "marked-lens": {
+      "id": "marked-lens",
+      "name": "Marked Lens",
+      "kind": "usable",
+      "phase": "table",
+      "buy": 40,
+      "sell": 20,
+      "slots": 1,
+      "heat": 1,
+      "description": "Peek one unrevealed community card once per table."
+    },
+    "signal-lighter": {
+      "id": "signal-lighter",
+      "name": "Signal Lighter",
+      "kind": "usable",
+      "phase": "table",
+      "buy": 35,
+      "sell": 15,
+      "slots": 1,
+      "heat": 0,
+      "description": "Read one opponent's current hand pressure as weak, medium, or strong."
+    },
+    "player-notes": {
+      "id": "player-notes",
+      "name": "Player Notes",
+      "kind": "usable",
+      "phase": "table",
+      "buy": 50,
+      "sell": 25,
+      "slots": 1,
+      "heat": 0,
+      "description": "Reveal one opponent's playing style archetype."
+    },
+    "steadying-drink": {
+      "id": "steadying-drink",
+      "name": "Steadying Drink",
+      "kind": "usable",
+      "phase": "search",
+      "buy": 30,
+      "sell": 10,
+      "slots": 1,
+      "heat": 0,
+      "description": "Reduce heat by 1 in the search phase."
+    },
+    "disposable-phone": {
+      "id": "disposable-phone",
+      "name": "Disposable Phone",
+      "kind": "usable",
+      "phase": "search",
+      "buy": 50,
+      "sell": 20,
+      "slots": 1,
+      "heat": 0,
+      "description": "Reveal every hidden layer of one table or refresh the fixed route offer."
+    },
+    "kitchen-pass": {
+      "id": "kitchen-pass",
+      "name": "Kitchen Pass",
+      "kind": "usable",
+      "phase": "search",
+      "buy": 45,
+      "sell": 20,
+      "slots": 1,
+      "heat": 0,
+      "unlockRoute": "service-stairs",
+      "description": "Flash it upstairs to reveal the service stairs extraction line."
+    },
+    "dock-passkey": {
+      "id": "dock-passkey",
+      "name": "Dock Passkey",
+      "kind": "usable",
+      "phase": "search",
+      "buy": 55,
+      "sell": 25,
+      "slots": 1,
+      "heat": 0,
+      "unlockRoute": "river-launch",
+      "description": "Signals a hidden river launch route that never appears on the public board."
+    },
+    "false-bottom-wallet": {
+      "id": "false-bottom-wallet",
+      "name": "False-Bottom Wallet",
+      "kind": "usable",
+      "phase": "passive",
+      "buy": 70,
+      "sell": 30,
+      "slots": 1,
+      "heat": 0,
+      "description": "On run failure, preserve the first 80 cash."
+    },
+    "sleeve-clip": {
+      "id": "sleeve-clip",
+      "name": "Sleeve Clip",
+      "kind": "usable",
+      "phase": "table",
+      "buy": 80,
+      "sell": 30,
+      "slots": 1,
+      "heat": 2,
+      "description": "Replace one hole card before the first betting decision of a hand."
+    },
+    "old-silver-lighter": {
+      "id": "old-silver-lighter",
+      "name": "Old Silver Lighter",
+      "kind": "valuable",
+      "value": 45,
+      "slots": 1,
+      "collateral": true,
+      "description": "A low-tier trophy that still moves well in the back room."
+    },
+    "ivory-chip": {
+      "id": "ivory-chip",
+      "name": "Ivory Chip",
+      "kind": "valuable",
+      "value": 60,
+      "slots": 1,
+      "collateral": true,
+      "description": "The cargo floor's favorite marker. Modest value, sharp symbolism."
+    },
+    "ruby-cufflink": {
+      "id": "ruby-cufflink",
+      "name": "Ruby Cufflink",
+      "kind": "valuable",
+      "value": 90,
+      "slots": 1,
+      "collateral": true,
+      "description": "A neat mid-tier pawn piece that still feels painful to lose."
+    },
+    "gold-cased-watch": {
+      "id": "gold-cased-watch",
+      "name": "Gold-Cased Watch",
+      "kind": "valuable",
+      "value": 120,
+      "slots": 1,
+      "collateral": true,
+      "description": "A stable high-value carry with no special trigger attached."
+    },
+    "antique-coin": {
+      "id": "antique-coin",
+      "name": "Antique Commemorative Coin",
+      "kind": "valuable",
+      "value": 140,
+      "slots": 1,
+      "collateral": true,
+      "description": "Mirror Hall's signature take-home reward."
+    },
+    "sealed-bond": {
+      "id": "sealed-bond",
+      "name": "Sealed Bond",
+      "kind": "valuable",
+      "value": 180,
+      "slots": 2,
+      "collateral": true,
+      "description": "A bulky paper prize that pays well if you can carry it out."
+    },
+    "pearl-necklace": {
+      "id": "pearl-necklace",
+      "name": "Pearl Necklace",
+      "kind": "valuable",
+      "value": 95,
+      "slots": 1,
+      "collateral": true,
+      "description": "A graceful luxury piece that pawns cleanly in the right room."
+    },
+    "emerald-brooch": {
+      "id": "emerald-brooch",
+      "name": "Emerald Brooch",
+      "kind": "valuable",
+      "value": 125,
+      "slots": 1,
+      "collateral": true,
+      "description": "A rich green piece that holds its nerve as collateral."
+    },
+    "obsidian-idol": {
+      "id": "obsidian-idol",
+      "name": "Obsidian Idol",
+      "kind": "valuable",
+      "value": 150,
+      "slots": 2,
+      "collateral": true,
+      "description": "Heavy, awkward, and worth real money if you can still walk with it."
+    },
+    "vault-promissory": {
+      "id": "vault-promissory",
+      "name": "Vault Promissory",
+      "kind": "valuable",
+      "value": 210,
+      "slots": 2,
+      "collateral": true,
+      "description": "A private-room paper that lenders will honor if the room believes you survived."
+    }
+  },
+  "shops": {
+    "smoky-den": {
+      "1": [
+        "marked-lens",
+        "steadying-drink",
+        "kitchen-pass",
+        "player-notes"
+      ],
+      "2": [
+        "signal-lighter",
+        "false-bottom-wallet",
+        "steadying-drink",
+        "dock-passkey",
+        "player-notes",
+        "sleeve-clip"
+      ],
+      "3": [
+        "signal-lighter",
+        "disposable-phone",
+        "sleeve-clip",
+        "player-notes",
+        "kitchen-pass"
+      ],
+      "4": [
+        "marked-lens",
+        "steadying-drink",
+        "dock-passkey",
+        "sleeve-clip",
+        "player-notes"
+      ],
+      "5": [
+        "signal-lighter",
+        "disposable-phone",
+        "sleeve-clip",
+        "player-notes"
+      ]
+    },
+    "high-rise-suite": {
+      "1": [
+        "player-notes",
+        "steadying-drink",
+        "false-bottom-wallet",
+        "marked-lens"
+      ],
+      "2": [
+        "signal-lighter",
+        "player-notes",
+        "dock-passkey",
+        "steadying-drink",
+        "sleeve-clip"
+      ],
+      "3": [
+        "disposable-phone",
+        "player-notes",
+        "sleeve-clip",
+        "kitchen-pass"
+      ],
+      "4": [
+        "marked-lens",
+        "player-notes",
+        "false-bottom-wallet",
+        "sleeve-clip"
+      ],
+      "5": [
+        "signal-lighter",
+        "disposable-phone",
+        "player-notes",
+        "sleeve-clip"
+      ]
+    },
+    "rooftop-club": {
+      "1": [
+        "steadying-drink",
+        "player-notes",
+        "marked-lens",
+        "kitchen-pass"
+      ],
+      "2": [
+        "signal-lighter",
+        "steadying-drink",
+        "dock-passkey",
+        "player-notes",
+        "sleeve-clip"
+      ],
+      "3": [
+        "player-notes",
+        "sleeve-clip",
+        "disposable-phone",
+        "kitchen-pass"
+      ],
+      "4": [
+        "marked-lens",
+        "steadying-drink",
+        "player-notes",
+        "sleeve-clip"
+      ],
+      "5": [
+        "signal-lighter",
+        "disposable-phone",
+        "player-notes",
+        "sleeve-clip"
+      ]
+    },
+    "neon-poker-club": {
+      "1": [
+        "marked-lens",
+        "player-notes",
+        "disposable-phone",
+        "steadying-drink"
+      ],
+      "2": [
+        "signal-lighter",
+        "player-notes",
+        "dock-passkey",
+        "false-bottom-wallet",
+        "sleeve-clip"
+      ],
+      "3": [
+        "disposable-phone",
+        "sleeve-clip",
+        "player-notes",
+        "kitchen-pass"
+      ],
+      "4": [
+        "marked-lens",
+        "dock-passkey",
+        "player-notes",
+        "sleeve-clip"
+      ],
+      "5": [
+        "signal-lighter",
+        "disposable-phone",
+        "player-notes",
+        "sleeve-clip"
+      ]
+    }
+  },
+  "searchActions": 2,
+  "inventorySlots": 6
 }

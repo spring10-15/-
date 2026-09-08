@@ -55,11 +55,12 @@ func _initialize() -> void:
 		var cash := session.cash
 		var fee := 24 + int(floor(cash * 0.12))
 		var quote := session.extraction_quote()
-		verify(quote.fee == fee and quote.net == cash - fee, "Smoky den fee matches browser formula")
+		var reward_value := 60 if returned > 60 else 0
+		verify(quote.fee == fee and quote.net == cash - fee + reward_value, "Smoky den fee matches browser formula")
 		verify(session.extract(quote.revision), "Known affordable exit succeeds")
 		verify(not session.extract(quote.revision), "Exit cannot be paid twice")
-		verify(session.vault == before - 60 + returned - fee and session.cash == 0, "Full run conservation including fee and poker profit")
-		verify(session.last_result.profit == returned - 60 - fee, "Result displays net run profit")
+		verify(session.vault == before - 60 + returned - fee + reward_value and session.cash == 0, "Full run conservation including fee and poker profit")
+		verify(session.last_result.profit == returned - 60 - fee + reward_value, "Result displays net run profit")
 	var edge := RunRules.new(content)
 	edge.vault = 119
 	verify(not edge.start(0), "Minimum bankroll enforced")

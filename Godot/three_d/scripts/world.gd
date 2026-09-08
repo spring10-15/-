@@ -5,6 +5,9 @@ const Interactable = preload("res://three_d/scripts/interactable.gd")
 const RunRules = preload("res://three_d/rules/run.gd")
 const OpponentRules = preload("res://three_d/rules/opponent.gd")
 const TableHUD = preload("res://three_d/scripts/table_hud.gd")
+const SaveStore = preload("res://three_d/rules/save_store.gd")
+const RunCheckpoint = preload("res://three_d/rules/run_checkpoint.gd")
+const ServicesHUD = preload("res://three_d/scripts/services_hud.gd")
 const STASH_ASSET = preload("res://three_d/assets/stash.glb")
 var player: CharacterBody3D
 var title_label: Label
@@ -19,6 +22,7 @@ var run_panel: PanelContainer
 var run_heading: Label
 var run_body: Label
 var run_confirm: Button
+var forfeit_button: Button
 var run_action := ""
 var run_revision := -1
 var exit_notice: Area3D
@@ -43,6 +47,12 @@ var materials := {}
 var table_rooms := {}
 var active_table_id := "cargo-table"
 var ledger_door: Area3D
+var services_panel: Control
+var save_path := "user://three-d-checkpoint.save"
+var saving_enabled := false
+var save_clock := 0.0
+var last_saved: PackedByteArray
+var save_notice: Label
 
 func _ready() -> void:
 	table_content = JSON.parse_string(FileAccess.get_file_as_string("res://three_d/rules/content.json"))
@@ -67,9 +77,12 @@ func _ready() -> void:
 	if not OS.get_cmdline_user_args().has("--test"):
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	readiness = true
+	if not OS.get_cmdline_user_args().has("--test"):
+		get_tree().auto_accept_quit = false
+		load_checkpoint()
 
 func configure_input() -> void:
-	var bindings := {"move_forward": KEY_W, "move_back": KEY_S, "move_left": KEY_A, "move_right": KEY_D, "interact": KEY_E, "pause": KEY_ESCAPE}
+	var bindings := {"move_forward": KEY_W, "move_back": KEY_S, "move_left": KEY_A, "move_right": KEY_D, "interact": KEY_E, "pause": KEY_ESCAPE, "inventory": KEY_B}
 	for action in bindings:
 		if not InputMap.has_action(action):
 			InputMap.add_action(action)
@@ -161,6 +174,7 @@ func build_stash() -> void:
 func build_tavern(room_name := "Tavern", offset := 10.0) -> void:
 	var room := room_shell(Vector3(offset, 0, 0), room_name)
 	box(room, "BarCounter", Vector3(2.0, 0.57, -1.25), Vector3(0.65, 1.14, 2.8), "wood")
+	target(room, "BarService", Vector3(1.54, 1.20, 0.10), Vector3(0.3, 0.6, 0.6), "services", "酒保服务 / 背包（B）")
 	box(room, "BarTop", Vector3(2.0, 1.16, -1.25), Vector3(0.86, 0.10, 3.0), "brass")
 	for z in [-2.2, -1.2, -0.2]:
 		box(room, "BarStool", Vector3(1.20, 0.37, z), Vector3(0.4, 0.74, 0.4), "wood")
@@ -256,7 +270,7 @@ func build_ui() -> void:
 	layer.add_child(ui)
 	title_label = label(ui, "藏匿点", 30)
 	title_label.position = Vector2(32, 25)
-	explore_instructions = label(ui, "WASD 行走   ·   鼠标观察   ·   E 交互   ·   Esc 暂停", 18)
+	explore_instructions = label(ui, "WASD 行走   ·   鼠标观察   ·   E 交互   ·   B 背包/服务   ·   Esc 暂停", 18)
 	explore_instructions.position = Vector2(32, 67)
 	economy_label = label(ui, "", 17)
 	economy_label.position = Vector2(32, 100)
@@ -279,7 +293,7 @@ func build_ui() -> void:
 	run_panel = make_panel(ui, "准备出发", "", "确认", confirm_run_action)
 	run_panel.offset_left = -350
 	run_panel.offset_right = 350
-	run_panel.offset_top = -340
+	run_panel.offset_top = -400
 	var column: VBoxContainer = run_panel.get_child(0).get_child(0)
 	run_heading = column.get_child(0)
 	run_confirm = column.get_child(1)
@@ -290,6 +304,19 @@ func build_ui() -> void:
 	cancel.custom_minimum_size.y = 40
 	cancel.pressed.connect(close_run_panel)
 	column.add_child(cancel)
+	forfeit_button = Button.new()
+	forfeit_button.text = "无法撤离：查看放弃本局的损失"
+	forfeit_button.custom_minimum_size.y = 36
+	forfeit_button.pressed.connect(func(): show_run_panel("abandon"))
+	column.add_child(forfeit_button)
+	forfeit_button.hide()
+	services_panel = ServicesHUD.new()
+	ui.add_child(services_panel)
+	services_panel.requested.connect(service_action)
+	services_panel.closed.connect(close_services)
+	services_panel.hide()
+	save_notice = label(ui, "", 15)
+	save_notice.position = Vector2(32, 126)
 	run_panel.hide()
 	pause_panel.hide()
 	seat_panel.hide()
@@ -336,7 +363,7 @@ func show_focus(focus: Area3D) -> void:
 		hint_label.text = focus.prompt() if is_instance_valid(focus) else ""
 
 func request_action(anchor: Area3D) -> bool:
-	if paused or run_panel.visible or seated or action_busy or not player.can_interact(anchor):
+	if paused or run_panel.visible or services_panel.visible or seated or action_busy or not player.can_interact(anchor):
 		return false
 	match anchor.action_id:
 		"toggle_case":
@@ -350,6 +377,8 @@ func request_action(anchor: Area3D) -> bool:
 			tween.tween_callback(func(): action_busy = false)
 			anchor.title = "合上皮箱" if case_open else "打开皮箱"
 			show_focus(anchor)
+		"services":
+			open_services()
 		"enter_tavern":
 			show_run_panel("enter")
 		"enter_stash":
@@ -414,6 +443,9 @@ func leave_seat() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func toggle_pause() -> void:
+	if services_panel.visible:
+		close_services()
+		return
 	if run_panel.visible:
 		close_run_panel()
 		return
@@ -446,7 +478,15 @@ func resume() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if seated else Input.MOUSE_MODE_CAPTURED
 
 func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and readiness:
+		if not saving_enabled or save_checkpoint():
+			get_tree().quit()
+		return
 	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT and readiness and not run_panel.visible and not OS.get_cmdline_user_args().has("--test"):
+		if saving_enabled:
+			save_checkpoint()
+		if services_panel.visible:
+			close_services()
 		if not paused:
 			pause_game()
 
@@ -461,18 +501,25 @@ func start_table(seed_value: int = -1) -> void:
 	refresh_table()
 
 func play_action(kind: String, expected_revision: int, raise_target: int = -1) -> void:
-	if paused or table_game == null or table_delay > 0:
+	if paused or services_panel.visible or table_game == null or table_delay > 0:
 		return
 	if table_game.act("player", kind, expected_revision, raise_target):
 		table_delay = 0.45
 		refresh_table()
 
 func continue_hand(expected_revision: int) -> void:
-	if not paused and table_game != null and table_game.next_hand(expected_revision):
+	if not paused and not services_panel.visible and table_game != null and table_game.next_hand(expected_revision):
 		table_delay = 0.45
 		refresh_table()
 
 func _process(delta: float) -> void:
+	if saving_enabled:
+		save_clock += delta
+		if save_clock >= 0.5:
+			save_clock = 0
+			save_checkpoint()
+	if services_panel.visible:
+		return
 	if table_game == null or paused or not seated:
 		return
 	if table_delay > 0:
@@ -485,7 +532,7 @@ func _process(delta: float) -> void:
 	advance_table_beat()
 
 func advance_table_beat() -> void:
-	if table_game == null or paused or table_game.state.status != "playing":
+	if services_panel.visible or table_game == null or paused or table_game.state.status != "playing":
 		return
 	var actor_id: String = table_game.state.currentActorId
 	if actor_id.is_empty():
@@ -543,29 +590,35 @@ func refresh_economy() -> void:
 		var result: Dictionary = run_game.last_result
 		economy_label.text = "金库 %d  ·  上局到账 %d / 费用 %d / 净变化 %+d" % [run_game.vault, result.net, result.fee, result.profit]
 	else:
-		economy_label.text = "金库 %d  ·  每次最多带出 300  ·  本次试玩，关闭程序不保存" % run_game.vault
+		economy_label.text = "金库 %d  ·  每次最多带出 300  ·  自动存档，可关闭后继续" % run_game.vault
 
 func show_run_panel(action: String) -> void:
 	run_action = action
 	run_revision = run_game.revision
 	run_confirm.disabled = false
+	forfeit_button.hide()
 	if action == "enter":
 		run_heading.text = "前往烟雾酒馆"
 		var amount := mini(int(table_content.standardBankroll), int(run_game.vault))
-		run_body.text = "金库 %d → %d，随身带出 %d。\n货运桌买入 60；撤离需要找到门旁的出口告示。\n本次试玩，关闭程序不保存。" % [run_game.vault, run_game.vault - amount, amount]
+		run_body.text = "金库 %d → %d，随身带出 %d。\n货运桌买入 60；撤离需要找到门旁的出口告示。\n自动存档，可关闭后继续。" % [run_game.vault, run_game.vault - amount, amount]
 		run_confirm.text = "带钱出发"
 		if run_game.vault < 120:
 			run_action = "reset"
 			run_body.text = "金库不足 120，暂时无法出发。\n可将试玩资金重置为 1,200，再开始新局。"
 			run_confirm.text = "重置试玩资金"
+	elif action == "abandon":
+		run_heading.text = "放弃本局"
+		run_body.text = "损失随身现金 %d 及全部背包物品。\n本次到账为 0，金库保留 %d。\n确认后返回藏匿点，这笔损失会保存。" % [run_game.cash, run_game.vault]
+		run_confirm.text = "确认放弃并损失随身财物"
 	else:
 		var quote: Dictionary = run_game.extraction_quote()
 		run_heading.text = "普通出口 · 撤离结算"
-		run_body.text = "随身现金 %d\n撤离费 %d（24 + 现金的 12%%，向下取整）\n到账金库 %d · 本局净变化 %+d" % [run_game.cash, quote.fee, quote.net, quote.net - run_game.bankroll]
+		run_body.text = "随身现金 %d\n撤离费 %d（24 + 现金的 12%%，向下取整）\n贵重物折现 %d\n到账金库 %d · 本局净变化 %+d" % [run_game.cash, quote.fee, quote.valuables, quote.net, quote.net - run_game.bankroll]
 		run_confirm.text = "支付费用并返回藏匿点"
 		if not quote.reason.is_empty():
 			run_body.text += "\n" + quote.reason
 			run_confirm.disabled = true
+			forfeit_button.visible = run_game.active and run_game.table == null
 	player.controls_enabled = false
 	player.velocity = Vector3.ZERO
 	crosshair.hide()
@@ -594,6 +647,11 @@ func confirm_run_action() -> void:
 			return
 		close_run_panel()
 		travel("stash")
+	elif run_action == "abandon":
+		if not run_game.abandon(run_revision):
+			return
+		close_run_panel()
+		travel("stash")
 	elif run_action == "reset":
 		if run_game.reset_demo(run_revision):
 			refresh_economy()
@@ -605,3 +663,99 @@ func select_table_room(room_name: String) -> void:
 	seat_camera = setup.camera
 	table_target = setup.target
 	active_table_id = "ledger-cellar" if room_name == "LedgerCellar" else "cargo-table"
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("inventory"):
+		if services_panel.visible:
+			close_services()
+		else:
+			open_services()
+		get_viewport().set_input_as_handled()
+
+func open_services() -> void:
+	if paused or run_panel.visible or not run_game.active:
+		return
+	services_panel.refresh(run_game.service_view())
+	services_panel.show()
+	player.controls_enabled = false
+	player.velocity = Vector3.ZERO
+	seat_panel.hide()
+	crosshair.hide()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+func close_services() -> void:
+	services_panel.hide()
+	player.controls_enabled = not seated and not paused
+	seat_panel.visible = seated and not paused
+	crosshair.visible = player.controls_enabled
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if player.controls_enabled else Input.MOUSE_MODE_VISIBLE
+
+func service_action(kind: String, item_id: String, revision: int) -> void:
+	if not services_panel.visible or paused:
+		return
+	if run_game.service_action(kind, item_id, revision):
+		refresh_economy()
+		if table_game != null:
+			refresh_table()
+		services_panel.refresh(run_game.service_view())
+
+func checkpoint_state() -> Dictionary:
+	return {"run": RunCheckpoint.capture(run_game), "room": current_room, "player": player.global_transform, "look": player.camera.rotation, "seated": seated, "return": return_transform, "caseOpen": case_open}
+
+func save_checkpoint() -> bool:
+	var state := checkpoint_state()
+	var bytes := var_to_bytes(state)
+	if bytes == last_saved:
+		return true
+	var error := SaveStore.write_checkpoint(save_path, state)
+	if error != OK:
+		save_notice.text = "保存失败：%s，请保留窗口并检查磁盘" % error_string(error)
+		return false
+	last_saved = bytes
+	save_notice.text = "已自动保存"
+	return true
+
+func load_checkpoint() -> void:
+	var loaded := SaveStore.read_checkpoint(save_path)
+	if loaded.status == "missing":
+		saving_enabled = true
+		return
+	if loaded.status != "ok" or not restore_checkpoint(loaded.state):
+		save_notice.text = "存档损坏或版本不兼容，已保留原文件；本次不覆盖存档"
+		saving_enabled = false
+		return
+	saving_enabled = true
+	pause_game()
+	save_notice.text = "已恢复进度，点击继续"
+
+func restore_checkpoint(state: Dictionary) -> bool:
+	if state.get("room") not in ["stash", "tavern", "ledger"] or not state.get("player") is Transform3D or not state.get("look") is Vector3 or not state.get("return") is Transform3D or not state.get("seated") is bool or not state.get("run") is Dictionary or not state.get("caseOpen") is bool:
+		return false
+	var restored := RunCheckpoint.restore(state.run, table_content)
+	if restored == null:
+		return false
+	if (state.room == "stash") == restored.active or (restored.table != null and not state.seated):
+		return false
+	if restored.table != null and restored.table.state.tableDef.id != ("ledger-cellar" if state.room == "ledger" else "cargo-table"):
+		return false
+	run_game = restored
+	case_open = state.caseOpen
+	lid.rotation = lid_open_rotation if case_open else lid_open_rotation + Vector3(deg_to_rad(102), 0, 0)
+	case_target.title = "合上皮箱" if case_open else "打开皮箱"
+	travel(state.room)
+	player.global_transform = state.player
+	player.camera.rotation = state.look
+	return_transform = state.return
+	seated = state.seated
+	table_game = run_game.table
+	if seated:
+		seat_camera.current = true
+		player.controls_enabled = false
+		explore_instructions.hide()
+		seat_panel.show()
+		if table_game != null:
+			refresh_table()
+		else:
+			seat_panel.pregame(run_game.cash, table_content.tables[active_table_id])
+	refresh_economy()
+	return true

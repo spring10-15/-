@@ -111,7 +111,7 @@ func pregame(cash := 0, definition: Dictionary = {}) -> void:
 		return
 	header.text = "%s · 本桌 %d 手" % [TABLE_NAMES[definition.id], definition.hands]
 	status.text = "每席 %d 筹码 · 小盲 %d / 大盲 %d" % [definition.buyIn, definition.smallBlind, definition.openBet]
-	status.text += " · 每手首次加注少付 10" if definition.id == "cargo-table" else " · 道具与物品奖励尚未接入"
+	status.text += " · 每手首次加注少付 10" if definition.id == "cargo-table" else " · 每次桌面道具额外增加 1 风声"
 	hand.text = "随身现金 %d · 开始时扣除买入 %d，离桌返还剩余筹码" % [cash, definition.buyIn]
 	history.text = ""
 	opponent_left.text = NAMES[definition.opponentIds[0]]

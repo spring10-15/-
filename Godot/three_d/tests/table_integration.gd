@@ -93,7 +93,7 @@ func run() -> void:
 	for i in range(5):
 		await physics_frame
 	verify(world.request_action(door), "Exit door opens quote")
-	var net: int = world.run_game.cash - 24 - int(floor(world.run_game.cash * 0.12))
+	var net: int = world.run_game.cash - 24 - int(floor(world.run_game.cash * 0.12)) + (60 if final_stack > 60 else 0)
 	world.run_confirm.pressed.emit()
 	verify(world.current_room == "stash" and world.run_game.vault == 900 + net and not world.run_game.active, "Exit button settles cash and returns to stash")
 	world.run_confirm.pressed.emit()
