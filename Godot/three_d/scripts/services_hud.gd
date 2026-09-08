@@ -1,5 +1,5 @@
 extends PanelContainer
-signal requested(kind: String, item_id: String, revision: int)
+signal requested(kind: String, item_id: String, revision: int, target_id: String)
 signal closed
 var rows: VBoxContainer
 func _ready() -> void:
@@ -32,7 +32,7 @@ func refresh(view: Dictionary) -> void:
 		button.text = action.label + (" · " + action.reason if not action.reason.is_empty() else "")
 		button.disabled = not action.reason.is_empty()
 		button.custom_minimum_size.y = 36
-		button.pressed.connect(func(): requested.emit(action.kind, action.id, view.revision))
+		button.pressed.connect(func(): requested.emit(action.kind, action.id, view.revision, action.get("target", "")))
 		rows.add_child(button)
 	var back := Button.new()
 	back.text = "返回游戏（B / Esc）"

@@ -655,5 +655,159 @@
     }
   },
   "searchActions": 2,
-  "inventorySlots": 6
+  "inventorySlots": 6,
+  "routes": {
+    "smoky-den": {
+      "fixedRoutes": [
+        {
+          "id": "kitchen-backlift",
+          "name": "Kitchen Backlift",
+          "reserveCost": 50,
+          "finalCost": 10,
+          "maxHeat": 4,
+          "flavor": "A flour-dusted runner opens the service gate for one clean exit."
+        },
+        {
+          "id": "linen-cart",
+          "name": "Linen Cart",
+          "reserveCost": 50,
+          "finalCost": 10,
+          "maxHeat": 4,
+          "flavor": "You leave under folded cloth, if the hallway still belongs to the staff."
+        }
+      ],
+      "specialRoutes": {
+        "service-stairs": {
+          "id": "service-stairs",
+          "name": "Service Stairs",
+          "revealFlag": "serviceStairs",
+          "finalCost": 25,
+          "maxHeat": 5,
+          "flavor": "A kitchen runner holds the stairwell open long enough for a clean exit if you move quickly."
+        },
+        "river-launch": {
+          "id": "river-launch",
+          "name": "River Launch",
+          "revealFlag": "riverLaunch",
+          "finalCost": 40,
+          "maxHeat": 4,
+          "flavor": "A silent launch waits below the loading docks, but only for someone already holding the right key."
+        }
+      }
+    },
+    "high-rise-suite": {
+      "fixedRoutes": [
+        {
+          "id": "vip-elevator",
+          "name": "VIP Elevator",
+          "reserveCost": 60,
+          "finalCost": 20,
+          "maxHeat": 4,
+          "flavor": "A concierge keeps the service elevator unlocked for one exact descent."
+        },
+        {
+          "id": "laundry-trolley",
+          "name": "Laundry Trolley",
+          "reserveCost": 55,
+          "finalCost": 15,
+          "maxHeat": 4,
+          "flavor": "You disappear with pressed linens and a bored porter who never asks names."
+        }
+      ],
+      "specialRoutes": {
+        "service-stairs": {
+          "id": "service-elevator",
+          "name": "Service Elevator",
+          "revealFlag": "serviceStairs",
+          "finalCost": 30,
+          "maxHeat": 5,
+          "flavor": "The maintenance shaft only stays open if the kitchen stamp is real."
+        },
+        "river-launch": {
+          "id": "basement-garage",
+          "name": "Basement Garage",
+          "revealFlag": "riverLaunch",
+          "finalCost": 45,
+          "maxHeat": 4,
+          "flavor": "A quiet car waits under the tower, but only for someone carrying the right coded key."
+        }
+      }
+    },
+    "rooftop-club": {
+      "fixedRoutes": [
+        {
+          "id": "staff-door",
+          "name": "Staff Door",
+          "reserveCost": 45,
+          "finalCost": 15,
+          "maxHeat": 4,
+          "flavor": "A bartender palms you a staff badge and points to the back stairs."
+        },
+        {
+          "id": "valet-loop",
+          "name": "Valet Loop",
+          "reserveCost": 55,
+          "finalCost": 20,
+          "maxHeat": 4,
+          "flavor": "The valet stand folds you into the traffic before the rooftop buzz catches up."
+        }
+      ],
+      "specialRoutes": {
+        "service-stairs": {
+          "id": "emergency-exit",
+          "name": "Emergency Exit",
+          "revealFlag": "serviceStairs",
+          "finalCost": 20,
+          "maxHeat": 5,
+          "flavor": "A fire stair hidden behind the bottle wall opens only if the stamped pass checks out."
+        },
+        "river-launch": {
+          "id": "helipad-drop",
+          "name": "Helipad Drop",
+          "revealFlag": "riverLaunch",
+          "finalCost": 50,
+          "maxHeat": 4,
+          "flavor": "A charter pilot takes you off the roof if the access chip still reads green."
+        }
+      }
+    },
+    "neon-poker-club": {
+      "fixedRoutes": [
+        {
+          "id": "data-node-gate",
+          "name": "Data Node Gate",
+          "reserveCost": 50,
+          "finalCost": 20,
+          "maxHeat": 4,
+          "flavor": "A coded maintenance gate blinks open for one clean exit window."
+        },
+        {
+          "id": "hack-door",
+          "name": "Hack Door",
+          "reserveCost": 60,
+          "finalCost": 25,
+          "maxHeat": 4,
+          "flavor": "A spoofed employee route gives you twenty seconds before the club catches up."
+        }
+      ],
+      "specialRoutes": {
+        "service-stairs": {
+          "id": "neural-jammer",
+          "name": "Neural Jammer Corridor",
+          "revealFlag": "serviceStairs",
+          "finalCost": 30,
+          "maxHeat": 5,
+          "flavor": "A dead sensor lane appears only when the right utility token trips the jammer."
+        },
+        "river-launch": {
+          "id": "quantum-portal",
+          "name": "Quantum Portal",
+          "revealFlag": "riverLaunch",
+          "finalCost": 55,
+          "maxHeat": 4,
+          "flavor": "The back-end portal only resolves for runners carrying a synced dock key."
+        }
+      }
+    }
+  }
 }

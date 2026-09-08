@@ -1,8 +1,10 @@
 extends RefCounted
 ## Run economy and services. Owns the table reference so callers cannot settle arbitrary stacks.
 const TableRules = preload("res://three_d/rules/table.gd")
-const SUPPORTED_ITEMS := ["marked-lens", "steadying-drink", "sleeve-clip"]
-const ITEM_NAMES := {"marked-lens": "标记镜片", "steadying-drink": "镇定酒", "sleeve-clip": "袖口夹"}
+const Routes = preload("res://three_d/rules/routes.gd")
+const Advanced = preload("res://three_d/rules/advanced_services.gd")
+const SUPPORTED_ITEMS := ["marked-lens", "steadying-drink", "sleeve-clip", "signal-lighter", "player-notes", "disposable-phone", "kitchen-pass", "dock-passkey", "false-bottom-wallet"]
+const ITEM_NAMES := {"marked-lens": "标记镜片", "steadying-drink": "镇定酒", "sleeve-clip": "袖口夹", "signal-lighter":"信号打火机", "player-notes":"玩家笔记", "disposable-phone":"一次性手机", "kitchen-pass":"后厨通行证", "dock-passkey":"码头密钥", "false-bottom-wallet":"夹层钱包"}
 var inventory: Array[String] = []
 var known_rules: Array[String] = []
 var used_tools: Array[String] = []
@@ -13,6 +15,11 @@ var search_index := 1
 var heat_reduced := false
 var service_message := ""
 var last_reward := ""
+var route_flags: Dictionary = {}
+var reservation: Dictionary = {}
+var offer_index := 0
+var full_intel: Dictionary = {}
+var opponent_notes: Dictionary = {}
 var content: Dictionary
 var vault: int
 var active := false
@@ -48,6 +55,11 @@ func start(expected_revision: int) -> bool:
 	last_result = {}
 	last_reward = ""
 	used_tools.clear()
+	route_flags.clear()
+	reservation.clear()
+	full_intel.clear()
+	opponent_notes.clear()
+	offer_index = 0
 	active = true
 	revision += 1
 	return true
@@ -114,29 +126,14 @@ func discover_exit() -> bool:
 	revision += 1
 	return true
 
-func extraction_quote() -> Dictionary:
-	var scene: Dictionary = content.scenes["smoky-den"]
-	var fee := int(scene.generalExtractionFlatFee) + int(floor(cash * float(scene.generalExtractionRate)))
-	if heat == 5:
-		fee += int(scene.lockdownSurcharge)
-	var reason := ""
-	if not active:
-		reason = "当前没有进行中的出局"
-	elif table != null:
-		reason = "请先完成牌桌并离座"
-	elif not public_exit:
-		reason = "尚未找到出口线索：查看门旁告示"
-	elif heat >= 6:
-		reason = "风声达到 6，普通出口已封锁"
-	elif cash < fee:
-		reason = "随身现金不足以支付撤离费"
-	return {"fee": fee, "valuables": valuable_total(), "net": maxi(0, cash - fee) + valuable_total(), "reason": reason, "revision": revision}
+func extraction_quote(kind := "general") -> Dictionary:
+	return Routes.quote(self, kind)
 
-func extract(expected_revision: int) -> bool:
-	var quote := extraction_quote()
+func extract(expected_revision: int, kind := "general") -> bool:
+	var quote := extraction_quote(kind)
 	if expected_revision != revision or not quote.reason.is_empty():
 		return false
-	last_result = {"cash": cash, "valuables": quote.valuables, "fee": quote.fee, "net": quote.net, "profit": quote.net - bankroll}
+	last_result = {"cash": cash, "valuables": quote.valuables, "fee": quote.fee, "net": quote.net, "profit": quote.net - bankroll, "route":kind, "lostCash":quote.lostCash, "lostGoods":quote.lostGoods}
 	vault += int(quote.net)
 	cash = 0
 	inventory.clear()
@@ -158,7 +155,9 @@ func slots_used() -> int:
 		slots += int(content.items[item_id].slots)
 	return slots
 
-func service_reason(kind: String, item_id: String) -> String:
+func service_reason(kind: String, item_id: String, target_id := "") -> String:
+	if kind in Advanced.KINDS:
+		return Advanced.reason(self, kind, item_id, target_id)
 	if not active:
 		return "请先带钱进入酒馆"
 	if kind in ["lens", "sleeve", "drink"] and item_id != {"lens": "marked-lens", "sleeve": "sleeve-clip", "drink": "steadying-drink"}[kind]:
@@ -205,11 +204,19 @@ func service_reason(kind: String, item_id: String) -> String:
 
 func shop_stock() -> Array:
 	var shops: Dictionary = content.shops["smoky-den"]
-	return shops.get(str(search_index), shops["3"])
+	var stock: Array = shops.get(str(search_index), shops["3"]).duplicate()
+	# The two-table slice must offer the phone before its final table.
+	if search_index == 2 and "disposable-phone" not in stock:
+		stock.append("disposable-phone")
+	return stock
 
-func service_action(kind: String, item_id: String, expected_revision: int) -> bool:
-	if expected_revision != revision or not service_reason(kind, item_id).is_empty():
+func service_action(kind: String, item_id: String, expected_revision: int, target_id := "") -> bool:
+	if expected_revision != revision or not service_reason(kind, item_id, target_id).is_empty():
 		return false
+	if kind in Advanced.KINDS:
+		Advanced.apply(self, kind, item_id, target_id)
+		revision += 1
+		return true
 	if kind == "buy":
 		cash -= int(content.items[item_id].buy)
 		inventory.append(item_id)
@@ -260,14 +267,36 @@ func service_view() -> Dictionary:
 		for table_id in ["cargo-table", "ledger-cellar"]:
 			actions.append({"kind": "intel", "id": table_id, "label": "调查%s规则 · 1 行动力" % ("货运桌" if table_id == "cargo-table" else "账房地窖")})
 	for item_id in inventory.duplicate():
-		if item_id in SUPPORTED_ITEMS:
+		if item_id in ["steadying-drink", "marked-lens", "sleeve-clip"]:
 			var kind: String = {"steadying-drink": "drink", "marked-lens": "lens", "sleeve-clip": "sleeve"}[item_id]
 			actions.append({"kind": kind, "id": item_id, "label": "使用 " + item_name(item_id)})
 		if table == null:
 			actions.append({"kind": "sell", "id": item_id, "label": "卖 %s · %d" % [item_name(item_id), sale_value(item_id)]})
+	if table == null:
+		if "disposable-phone" in inventory:
+			actions.append({"kind":"phone-route", "id":"disposable-phone", "label":"使用手机 · 更新接应路线"})
+			for table_id in ["cargo-table", "ledger-cellar"]:
+				actions.append({"kind":"phone-table", "id":"disposable-phone", "target":table_id, "label":"使用手机 · 查明" + ("货运桌" if table_id == "cargo-table" else "账房地窖") + "全部情报"})
+		for pass_id in ["kitchen-pass", "dock-passkey"]:
+			if pass_id in inventory:
+				actions.append({"kind":"pass", "id":pass_id, "label":"使用 " + item_name(pass_id)})
+		actions.append({"kind":"reserve", "id":"", "label":"预约%s · 预付 %d / 尾款 %d" % [offer_name(route_offer().id), maxi(10, int(route_offer().reserveCost) - 10), route_offer().finalCost]})
+		for route in Routes.NAMES:
+			actions.append({"kind":"route", "id":route, "label":"查看路线 · " + Routes.NAMES[route]})
+	else:
+		for item_id in ["signal-lighter", "player-notes"]:
+			if item_id in inventory:
+				for actor in table.state.players.slice(1):
+					actions.append({"kind":"signal" if item_id == "signal-lighter" else "notes", "id":item_id, "target":actor.id, "label":"%s → %s" % [item_name(item_id), actor_name(actor.id)]})
 	for action in actions:
-		action.reason = service_reason(action.kind, action.id)
+		action.reason = "" if action.kind == "route" else service_reason(action.kind, action.id, action.get("target", ""))
 	var text := last_reward + "\n" + service_message
+	if not reservation.is_empty():
+		text += "\n%s：当前第 %d 轮，第 %d 轮结束前有效，尾款 %d" % [offer_name(reservation.id), search_index, reservation.expiresAfterSearch, reservation.finalCost]
+	for table_id in full_intel:
+		text += "\n%s：对手 %s；奖励 %s" % [table_name(table_id), "、".join(content.tables[table_id].opponentIds.map(func(id): return actor_name(id))), "、".join(content.tables[table_id].baseRewardPool.map(func(id): return item_name(id)))]
+	for actor in opponent_notes:
+		text += "\n%s 风格：%s" % [actor_name(actor), archetype_name(opponent_notes[actor])]
 	for table_id in known_rules:
 		text += "\n" + ("货运桌：每手首次加注少付 10" if table_id == "cargo-table" else "账房地窖：每次桌面道具额外增加 1 风声")
 	if not preview.is_empty():
@@ -294,9 +323,49 @@ func valuable_total() -> int:
 func abandon(expected_revision: int) -> bool:
 	if expected_revision != revision or not active or table != null:
 		return false
-	last_result = {"cash": cash, "valuables": valuable_total(), "fee": 0, "net": 0, "profit": -bankroll, "abandoned": true}
+	var salvaged := mini(80, cash) if "false-bottom-wallet" in inventory else 0
+	vault += salvaged
+	last_result = {"cash": cash, "valuables": valuable_total(), "fee": 0, "net": salvaged, "profit": salvaged - bankroll, "abandoned": true}
 	cash = 0
 	inventory.clear()
 	active = false
 	revision += 1
 	return true
+
+func route_offer() -> Dictionary:
+	return content.routes["smoky-den"].fixedRoutes[offer_index]
+
+func fixed_known() -> bool:
+	return "cargo-table" in completed or route_flags.get("fixed", false)
+
+func emergency_known() -> bool:
+	return heat >= 4 or not completed.is_empty() or valuable_total() > 0
+
+func actor_name(id: String) -> String:
+	return {"player":"你", "dock-braggart":"码头吹牛客", "ledger-clerk":"账房先生", "river-shark":"河道老鲨", "velvet-rook":"绒衣新客"}.get(id, id)
+
+func table_name(id: String) -> String:
+	return {"cargo-table":"货运桌", "ledger-cellar":"账房地窖"}.get(id, id)
+
+func archetype_name(value: String) -> String:
+	return {"Maniac":"激进型", "Nit":"紧手型", "Fish":"松散型", "Shark":"老练型", "Calling Station":"跟注型"}.get(value, value)
+
+func enforce_pressure() -> bool:
+	if not active or table != null or heat < 6:
+		return false
+	var best_route := ""
+	var best_cash := -1
+	for kind in Routes.NAMES:
+		var option := extraction_quote(kind)
+		if option.reason.is_empty() and option.net > best_cash:
+			best_route = kind
+			best_cash = option.net
+	if best_route.is_empty():
+		abandon(revision)
+	else:
+		extract(revision, best_route)
+	last_result["forced"] = true
+	return true
+
+func offer_name(id: String) -> String:
+	return {"kitchen-backlift":"后厨货梯接应", "linen-cart":"布草车接应"}.get(id, id)

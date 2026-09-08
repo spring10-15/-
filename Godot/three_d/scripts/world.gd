@@ -53,6 +53,7 @@ var saving_enabled := false
 var save_clock := 0.0
 var last_saved: PackedByteArray
 var save_notice: Label
+var selected_route := "general"
 
 func _ready() -> void:
 	table_content = JSON.parse_string(FileAccess.get_file_as_string("res://three_d/rules/content.json"))
@@ -205,6 +206,17 @@ func build_tavern(room_name := "Tavern", offset := 10.0) -> void:
 		notice_text.rotation.y = PI / 2
 		room.add_child(notice_text)
 		exit_notice = target(room, "ExitNoticeTarget", Vector3(-2.73, 1.6, 2.55), Vector3(0.16, 0.52, 0.59), "discover_exit", "查看出口告示")
+		for i in range(3):
+			var route_id: String = ["fixed", "service-stairs", "river-launch"][i]
+			var pos := Vector3(-1.8 + i * 1.8, 1.3, -3.32)
+			box(room, "RouteEntrance", pos, Vector3(1.05, 2.3, 0.08), "wood", false)
+			target(room, "RouteTarget", pos + Vector3(0, 0, 0.12), Vector3(1.0, 2.1, 0.16), "route:" + route_id, run_game.Routes.NAMES[route_id] + " · 查看条件")
+			var sign := Label3D.new()
+			sign.text = run_game.Routes.NAMES[route_id]
+			sign.font_size = 40
+			sign.pixel_size = 0.003
+			sign.position = pos + Vector3(0, 0.7, 0.08)
+			room.add_child(sign)
 		ledger_door = make_door(room, Vector3(2.83, 1.1, 1.65), "前往账房地窖 · 需完成货运桌", "enter_ledger")
 	else:
 		make_door(room, Vector3(-2.83, 1.1, 1.65), "返回烟雾酒馆", "back_tavern")
@@ -291,9 +303,11 @@ func build_ui() -> void:
 	seat_panel.continue_requested.connect(continue_hand)
 	seat_panel.leave_requested.connect(leave_seat)
 	run_panel = make_panel(ui, "准备出发", "", "确认", confirm_run_action)
+	run_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	run_panel.offset_left = -350
 	run_panel.offset_right = 350
-	run_panel.offset_top = -400
+	run_panel.offset_top = -270
+	run_panel.offset_bottom = 270
 	var column: VBoxContainer = run_panel.get_child(0).get_child(0)
 	run_heading = column.get_child(0)
 	run_confirm = column.get_child(1)
@@ -304,6 +318,11 @@ func build_ui() -> void:
 	cancel.custom_minimum_size.y = 40
 	cancel.pressed.connect(close_run_panel)
 	column.add_child(cancel)
+	var routes_button := Button.new()
+	routes_button.text = "查看全部路线 / 酒保服务（B）"
+	routes_button.custom_minimum_size.y = 36
+	routes_button.pressed.connect(func(): close_run_panel(); open_services())
+	column.add_child(routes_button)
 	forfeit_button = Button.new()
 	forfeit_button.text = "无法撤离：查看放弃本局的损失"
 	forfeit_button.custom_minimum_size.y = 36
@@ -365,6 +384,9 @@ func show_focus(focus: Area3D) -> void:
 func request_action(anchor: Area3D) -> bool:
 	if paused or run_panel.visible or services_panel.visible or seated or action_busy or not player.can_interact(anchor):
 		return false
+	if str(anchor.action_id).begins_with("route:"):
+		show_run_panel(anchor.action_id)
+		return true
 	match anchor.action_id:
 		"toggle_case":
 			if not is_instance_valid(lid):
@@ -441,6 +463,7 @@ func leave_seat() -> void:
 	seat_panel.hide()
 	crosshair.show()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	check_pressure()
 
 func toggle_pause() -> void:
 	if services_panel.visible:
@@ -589,11 +612,14 @@ func refresh_economy() -> void:
 	elif not run_game.last_result.is_empty():
 		var result: Dictionary = run_game.last_result
 		economy_label.text = "金库 %d  ·  上局到账 %d / 费用 %d / 净变化 %+d" % [run_game.vault, result.net, result.fee, result.profit]
+		if result.get("forced", false):
+			economy_label.text += " · 风声封锁，已触发紧急结算"
 	else:
 		economy_label.text = "金库 %d  ·  每次最多带出 300  ·  自动存档，可关闭后继续" % run_game.vault
 
 func show_run_panel(action: String) -> void:
-	run_action = action
+	selected_route = action.trim_prefix("route:") if action.begins_with("route:") else "general"
+	run_action = "extract" if action.begins_with("route:") else action
 	run_revision = run_game.revision
 	run_confirm.disabled = false
 	forfeit_button.hide()
@@ -608,12 +634,12 @@ func show_run_panel(action: String) -> void:
 			run_confirm.text = "重置试玩资金"
 	elif action == "abandon":
 		run_heading.text = "放弃本局"
-		run_body.text = "损失随身现金 %d 及全部背包物品。\n本次到账为 0，金库保留 %d。\n确认后返回藏匿点，这笔损失会保存。" % [run_game.cash, run_game.vault]
+		run_body.text = "损失随身现金 %d 及全部背包物品。\n夹层钱包可保留至多 80 现金；其余损失。\n当前金库 %d。\n确认后返回藏匿点，这笔损失会保存。" % [run_game.cash, run_game.vault]
 		run_confirm.text = "确认放弃并损失随身财物"
 	else:
-		var quote: Dictionary = run_game.extraction_quote()
-		run_heading.text = "普通出口 · 撤离结算"
-		run_body.text = "随身现金 %d\n撤离费 %d（24 + 现金的 12%%，向下取整）\n贵重物折现 %d\n到账金库 %d · 本局净变化 %+d" % [run_game.cash, quote.fee, quote.valuables, quote.net, quote.net - run_game.bankroll]
+		var quote: Dictionary = run_game.extraction_quote(selected_route)
+		run_heading.text = run_game.Routes.NAMES[selected_route] + " · 撤离结算"
+		run_body.text = "现金 %d · 费用 %d\n舍弃现金 %d · 舍弃贵重物价值 %d\n带回贵重物 %d · 最终到账 %d\n本局净变化 %+d" % [run_game.cash, quote.fee, quote.lostCash, quote.lostGoods, quote.valuables, quote.net, quote.net - run_game.bankroll]
 		run_confirm.text = "支付费用并返回藏匿点"
 		if not quote.reason.is_empty():
 			run_body.text += "\n" + quote.reason
@@ -643,7 +669,7 @@ func confirm_run_action() -> void:
 		close_run_panel()
 		travel("tavern")
 	elif run_action == "extract":
-		if not run_game.extract(run_revision):
+		if not run_game.extract(run_revision, selected_route):
 			return
 		close_run_panel()
 		travel("stash")
@@ -690,14 +716,19 @@ func close_services() -> void:
 	crosshair.visible = player.controls_enabled
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if player.controls_enabled else Input.MOUSE_MODE_VISIBLE
 
-func service_action(kind: String, item_id: String, revision: int) -> void:
+func service_action(kind: String, item_id: String, revision: int, target_id := "") -> void:
 	if not services_panel.visible or paused:
 		return
-	if run_game.service_action(kind, item_id, revision):
+	if kind == "route":
+		close_services()
+		show_run_panel("route:" + item_id)
+		return
+	if run_game.service_action(kind, item_id, revision, target_id):
 		refresh_economy()
 		if table_game != null:
 			refresh_table()
 		services_panel.refresh(run_game.service_view())
+		check_pressure()
 
 func checkpoint_state() -> Dictionary:
 	return {"run": RunCheckpoint.capture(run_game), "room": current_room, "player": player.global_transform, "look": player.camera.rotation, "seated": seated, "return": return_transform, "caseOpen": case_open}
@@ -759,3 +790,9 @@ func restore_checkpoint(state: Dictionary) -> bool:
 			seat_panel.pregame(run_game.cash, table_content.tables[active_table_id])
 	refresh_economy()
 	return true
+
+func check_pressure() -> void:
+	if run_game.enforce_pressure():
+		if services_panel.visible:
+			close_services()
+		travel("stash")

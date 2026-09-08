@@ -1,5 +1,7 @@
 # Development Plan
 
+> 2026-09-08：当前制作转为 Blender + Godot 3D 双桌样板。最新范围、完成项、遗漏项与测试步骤见 [3D 计划复核](docs/3d-production/plan-review.md)。下文为网页版本历史计划，旧 2.5D 表现约定不覆盖当前 3D 方向。
+
 ## Current Phase
 
 Phase: vertical-slice readability pass, noir illustration scene migration, and noir shell reskin
